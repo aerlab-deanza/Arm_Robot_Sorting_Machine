@@ -2,7 +2,7 @@
 
 This guide shows how the camera image becomes object positions.
 
-The PC pipeline is `src/vision/tray_object_pipeline.py`. It works with an RTSP stream or a USB camera.
+The PC pipeline is `vision/tray_object_pipeline.py`. It works with an RTSP stream or a USB camera.
 
 ```text
 Read image → find tray → steady outline → make mask → straighten view → find objects → report positions
