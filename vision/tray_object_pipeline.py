@@ -1,4 +1,4 @@
-"""Locate a moving white tray, rectify it, and find colored objects on it.
+"""Locate a moving black tray, rectify it, and find colored objects on it.
 
 Runs on the PC. The tray and objects must lie on the same flat work surface.
 Reported coordinates are normalized to the rectified tray; robot-base
@@ -51,13 +51,13 @@ def order_quad(points):
 
 
 def tray_quad(frame, min_hue, max_hue, min_saturation, min_value,
-              max_saturation, min_area_ratio, close_kernel):
-    """Find the pale cyan tray and return a plausible four-corner outline."""
+              max_saturation, max_value, min_area_ratio, close_kernel):
+    """Find a dark, low-saturation tray and return its four-corner outline."""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     threshold = cv2.inRange(
         hsv,
         np.array([min_hue, min_saturation, min_value], dtype=np.uint8),
-        np.array([max_hue, max_saturation, 255], dtype=np.uint8),
+        np.array([max_hue, max_saturation, max_value], dtype=np.uint8),
     )
     k = max(3, close_kernel | 1)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
@@ -92,7 +92,8 @@ def tray_quad(frame, min_hue, max_hue, min_saturation, min_value,
             continue
         aspect_ratio = long_side / short_side
         rectangularity = area / (rect_width * rect_height)
-        if not 1.2 <= aspect_ratio <= 5.5 or rectangularity < 0.48:
+        # A low camera angle can make a rectangular tray look very shallow.
+        if not 1.2 <= aspect_ratio <= 8.0 or rectangularity < 0.48:
             continue
 
         perimeter = cv2.arcLength(hull, True)
@@ -286,15 +287,43 @@ def find_objects(warped, masks, min_object_area_ratio, max_aspect_ratio=1.9):
 
 def open_capture(url, transport):
     if isinstance(url, int):
-        cap = cv2.VideoCapture(url)
-        if cap.isOpened():
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            print("Connected to USB camera index {}.".format(url), flush=True)
-            return cap
-        cap.release()
+        backends = []
+        for name, backend in (
+            ("DirectShow", "CAP_DSHOW"),
+            ("Media Foundation", "CAP_MSMF"),
+            ("default", "CAP_ANY"),
+        ):
+            api = getattr(cv2, backend, None)
+            if api is not None and all(api != existing[1] for existing in backends):
+                backends.append((name, api))
+
+        for name, api in backends:
+            cap = cv2.VideoCapture(url, api)
+            if cap.isOpened():
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                # Some Windows camera backends report an open device but return
+                # black startup frames. Skip those before choosing a backend.
+                for _ in range(8):
+                    ok, frame = cap.read()
+                    if (ok and frame is not None and frame.size and
+                            (frame.max() > 2 or frame.mean() > 1)):
+                        print(
+                            "Connected to USB camera index {} using {}.".format(
+                                url, name
+                            ),
+                            flush=True,
+                        )
+                        return cap
+                print(
+                    "Camera index {} opened with {}, but returned empty/black frames."
+                    .format(url, name),
+                    flush=True,
+                )
+            cap.release()
         raise SystemExit(
-            "Could not open USB camera index {}. Check that the camera is "
-            "connected and not in use by another app.".format(url)
+            "Could not get a usable image from USB camera index {}. Try another "
+            "index, close apps using the camera, and check Windows Camera "
+            "privacy settings.".format(url)
         )
 
     timeout = []
@@ -345,22 +374,59 @@ def open_capture(url, transport):
     )
 
 
+def arrange_preview_windows():
+    """Place the debug views in a two-column grid on the primary display."""
+    names = (
+        "Camera / tray localization",
+        "Tray threshold",
+        "Tray mask",
+        "Image restricted to tray",
+        "Rectified tray / detected objects",
+        "Colored-object mask",
+    )
+    try:
+        import ctypes
+        screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+    except (AttributeError, ImportError, OSError):
+        screen_width, screen_height = 1280, 720
+
+    cell_width = max(320, (screen_width - 30) // 2)
+    # Leave room for Windows title bars and display scaling so the bottom row
+    # stays on screen.
+    cell_height = max(220, (screen_height - 160) // 3)
+    for index, name in enumerate(names):
+        row, column = divmod(index, 2)
+        cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(name, cell_width, cell_height)
+        cv2.moveWindow(
+            name,
+            10 + column * (cell_width + 10),
+            10 + row * (cell_height + 25),
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Detect colored objects inside a dynamically located white tray."
+        description="Detect colored objects inside a dynamically located black tray."
     )
     parser.add_argument("--url", default="rtsp://192.168.0.25:554")
     parser.add_argument(
         "--camera-index", type=int,
-        help="USB camera index (usually 0); use instead of --url",
+        help="Camera index (on this setup: 0=USB camera, 1=laptop camera)",
     )
     parser.add_argument("--transport", choices=("auto", "tcp", "udp"), default="auto")
-    parser.add_argument("--tray-min-hue", type=int, default=70)
-    parser.add_argument("--tray-max-hue", type=int, default=112)
-    parser.add_argument("--tray-min-saturation", type=int, default=10)
-    parser.add_argument("--tray-min-value", type=int, default=160)
-    parser.add_argument("--tray-max-saturation", type=int, default=150)
+    # Black has no stable hue. Ignore hue and select dark, low-saturation pixels.
+    parser.add_argument("--tray-min-hue", type=int, default=0)
+    parser.add_argument("--tray-max-hue", type=int, default=179)
+    parser.add_argument("--tray-min-saturation", type=int, default=0)
+    parser.add_argument("--tray-min-value", type=int, default=0)
+    parser.add_argument("--tray-max-saturation", type=int, default=130)
+    parser.add_argument("--tray-max-value", type=int, default=85,
+                        help="Brightest pixel value included in the black tray mask")
     parser.add_argument("--tray-min-area-ratio", type=float, default=0.04)
+    parser.add_argument("--tray-settle-seconds", type=float, default=2.0,
+                        help="Wait after first tray detection before confirming it")
     parser.add_argument("--close-kernel", type=int, default=9)
     parser.add_argument("--object-min-saturation", type=int, default=70)
     parser.add_argument("--object-min-value", type=int, default=45)
@@ -372,9 +438,11 @@ def main():
     source = args.camera_index if args.camera_index is not None else args.url
     cap = open_capture(source, args.transport)
     print("Reading {}. Press q in a preview window to quit.".format(source))
+    arrange_preview_windows()
     last_report = 0.0
     failures = 0
     tray_tracker = TrayQuadTracker()
+    settle_until = None
 
     try:
         while True:
@@ -395,9 +463,45 @@ def main():
                 args.tray_min_saturation,
                 args.tray_min_value,
                 args.tray_max_saturation,
+                args.tray_max_value,
                 args.tray_min_area_ratio,
                 args.close_kernel,
             )
+
+            if (tray_tracker.current is None and detected_quad is not None and
+                    settle_until is None and args.tray_settle_seconds > 0):
+                settle_until = time.monotonic() + args.tray_settle_seconds
+                print(
+                    "Tray candidate found. Remove your hand; confirming in {:.1f} seconds."
+                    .format(args.tray_settle_seconds),
+                    flush=True,
+                )
+
+            if settle_until is not None:
+                remaining = settle_until - time.monotonic()
+                if remaining > 0:
+                    overview = frame.copy()
+                    if detected_quad is not None:
+                        cv2.polylines(
+                            overview, [detected_quad.astype(np.int32)], True,
+                            (0, 255, 255), 2,
+                        )
+                    cv2.putText(
+                        overview, "REMOVE HAND - {:.1f}s".format(remaining),
+                        (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0,
+                        (0, 255, 255), 2,
+                    )
+                    cv2.imshow("Camera / tray localization", overview)
+                    cv2.imshow("Tray threshold", tray_threshold)
+                    cv2.imshow("Tray mask", np.zeros(frame.shape[:2], dtype=np.uint8))
+                    cv2.imshow("Image restricted to tray", np.zeros_like(frame))
+                    cv2.imshow("Rectified tray / detected objects", np.zeros_like(frame))
+                    cv2.imshow("Colored-object mask", np.zeros(frame.shape[:2], dtype=np.uint8))
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                    continue
+                settle_until = None
+
             quad = tray_tracker.update(detected_quad, frame.shape)
             overview = frame.copy()
             if quad is None:
@@ -424,7 +528,6 @@ def main():
             objects = find_objects(
                 warped, masks, args.object_min_area_ratio, args.object_max_aspect
             )
-
             labels = warped.copy()
             combined_mask = np.zeros(warped.shape[:2], dtype=np.uint8)
             for color, mask in masks.items():
@@ -443,6 +546,7 @@ def main():
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2,
             )
             cv2.imshow("Camera / tray localization", overview)
+            cv2.imshow("Tray threshold", tray_threshold)
             cv2.imshow("Tray mask", tray_mask)
             cv2.imshow("Image restricted to tray", tray_only)
             cv2.imshow("Rectified tray / detected objects", labels)
