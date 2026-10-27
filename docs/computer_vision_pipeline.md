@@ -10,11 +10,17 @@ Read image → find tray → steady outline → make mask → straighten view �
 
 The examples below show the current black tray with red and purple objects.
 
+Each step has a short looping animation, with the explanation written in under the picture. The real camera screenshots appear inside the animations.
+
+![Goal: turn a grid of pixel values into which object and where](images/pipeline/00-goal.gif)
+
 ## 1. Read a camera frame
 
 **Technique: OpenCV `VideoCapture`.** It reads a live video one image at a time. Each image is a frame.
 
 **Why:** The other steps need an image to process.
+
+![An image is a grid of pixels, each one three numbers](images/pipeline/01-pixels.gif)
 
 **Learn:** [OpenCV VideoCapture](https://docs.opencv.org/4.x/d8/dfe/classcv_1_1VideoCapture.html)
 
@@ -28,13 +34,19 @@ The examples below show the current black tray with red and purple objects.
 
 **Why:** Separate the tray from the table and background.
 
+Why HSV instead of red, green, blue, and why red needs two ranges:
+
+![RGB vs HSV, and the red hue wrap-around](images/pipeline/02a-hsv.gif)
+
+The pass/fail test on each pixel:
+
+![Each pixel passes or fails the brightness and saturation test](images/pipeline/02b-threshold.gif)
+
 **Learn:** [HSV thresholding](https://docs.opencv.org/4.x/da/d97/tutorial_threshold_inRange.html), [morphology](https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html), [ArUco markers](https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html)
 
 White = selected dark pixels. Black = ignored pixels. Objects leave holes in the tray threshold. Other dark surfaces may also pass; step 3 checks their shape.
 
 Default limits: brightness 0–85, saturation 0–130. Adjust for the lighting.
-
-![Threshold selecting the black tray, with holes at the red and purple objects](images/black-tray-threshold.png)
 
 ## 3. Turn tray pixels into an outline
 
@@ -47,9 +59,11 @@ Default limits: brightness 0–85, saturation 0–130. Adjust for the lighting.
 
 The program checks each candidate’s size and shape, then estimates the tray corners.
 
-Here, the green outline follows the tray. This is a successful tray detection.
+![Contours turn white regions into outlines that can be measured](images/pipeline/03a-contours.gif)
 
-![Successful black tray detection with a green outline](images/black-tray-localization.png)
+![Convex hull, four-corner approximation, and the minimum-area rectangle](images/pipeline/03b-corners.gif)
+
+Here, the green outline follows the tray. This is a successful tray detection.
 
 If the program says “TRAY NOT FOUND,” check the threshold and outline before using object positions.
 
@@ -67,6 +81,8 @@ If the program says “TRAY NOT FOUND,” check the threshold and outline before
 
 **Why:** Lighting and camera noise make corners jump around.
 
+![Exponential moving average, jump confirmation, and the 2-second countdown](images/pipeline/04-steady.gif)
+
 First detection starts a 2-second countdown. Move your hand away. The program uses the latest detection after the countdown, then smooths corner changes. This timer does not detect hands.
 
 The tracker keeps the last outline through up to 8 missed frames. Large jumps need 3 similar detections.
@@ -82,15 +98,13 @@ The tracker keeps the last outline through up to 8 missed frames. Large jumps ne
 
 **Why:** Focus later steps on the tray. See which area the program selected.
 
+![Fill the tray outline so the objects aren't cut out, then keep only the tray](images/pipeline/05-mask.gif)
+
 **Learn:** [OpenCV drawing and filled shapes](https://docs.opencv.org/4.x/d6/d6e/group__imgproc__draw.html)
 
 The filled mask covers the tray and objects. No holes at the objects. Its border follows the tracked tray corners, with no added padding.
 
-![Filled mask covering the black tray and its objects](images/black-tray-mask.png)
-
 The tray-only view keeps the tray and objects. Pixels outside the tray become black.
-
-![Camera image restricted to the black tray](images/black-tray-only.png)
 
 ## 6. Straighten the tray view
 
@@ -100,6 +114,8 @@ The tray-only view keeps the tray and objects. Pixels outside the tray become bl
 - **Perspective warping (`warpPerspective`)** applies that mapping to make a top-down view.
 
 **Why:** The tray looks skewed when viewed at an angle. Straightening makes positions easier to compare.
+
+![Four corners map the skewed tray onto a rectangle](images/pipeline/06-perspective.gif)
 
 **Learn:** [OpenCV geometric transforms](https://docs.opencv.org/4.x/da/d54/group__imgproc__transform.html)
 
@@ -118,15 +134,23 @@ The skewed tray becomes a rectangle. See the detection view in step 7.
 
 **Why:** Find the project’s bright objects without training a model.
 
+Why the tray is black:
+
+![White tray vs black tray: shadows and duplicate color regions](images/pipeline/07a-black-tray.gif)
+
+Cleaning the color mask:
+
+![Morphological opening removes specks, closing fills gaps](images/pipeline/07b-cleanup.gif)
+
+Duplicate boxes and the center of each region:
+
+![Overlap suppression, and the balance point of the selected pixels](images/pipeline/07c-boxes-centers.gif)
+
 **Learn:** [Morphology](https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html), [contours](https://docs.opencv.org/4.x/df/d0d/tutorial_find_contours.html)
 
 The green boxes mark objects. Blue dots mark their color-region centers.
 
-![Detected red and purple objects on the black tray](images/black-tray-detections.png)
-
 The combined color mask selects the objects as white. The tray stays black.
-
-![Combined red and purple object mask](images/black-tray-object-mask.png)
 
 ## 8. Report positions
 
@@ -134,4 +158,16 @@ The combined color mask selects the objects as white. The tray stays black.
 
 **Why:** Positions are comparable across image sizes.
 
+![Divide by the image width and height to get positions from 0 to 1](images/pipeline/08-normalized.gif)
+
 Values describe the tray image, not robot coordinates in millimeters. No height, grip angle, or arm commands yet.
+
+## Recap and next steps
+
+The whole pipeline, step by step, on real screenshots:
+
+![Recap: tray outline, threshold, mask, tray only, detections, object mask](images/pipeline/09a-recap.gif)
+
+What's still needed before the robot can pick. Details in [pipeline limits](limitation.md).
+
+![What works today and what is still needed](images/pipeline/09b-next.gif)

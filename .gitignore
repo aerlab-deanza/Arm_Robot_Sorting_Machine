@@ -1,2 +1,5 @@
 phong_local_notes
-video
+.claude
+__pycache__/
+
+docs/animations/media
