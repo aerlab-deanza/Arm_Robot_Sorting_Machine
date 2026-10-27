@@ -50,29 +50,3 @@ Laptop Camera:
 python vision/tray_object_pipeline.py --camera-index 1
 ```
 
-View the live camera stream in VLC: open **Media → Open Network Stream**, enter `rtsp://192.168.0.25:554`, then click **Play**.
-
-View the live camera stream in FFplay with low buffering:
-
-```powershell
-ffplay -rtsp_transport udp -fflags nobuffer -flags low_delay -framedrop -an "rtsp://192.168.0.25:554"
-```
-
-Run tray and object detection on the PC using the AMB82-Mini camera stream:
-
-```powershell
-python vision/tray_object_pipeline.py --url rtsp://192.168.0.25:554
-```
-
-If OpenCV cannot read the RTSP stream, start this VLC relay. It converts the
-camera stream to local HTTP. Keep this PowerShell window open:
-
-```powershell
-& "C:\Program Files\VideoLAN\VLC\vlc.exe" --no-one-instance -I dummy "rtsp://192.168.0.25:554" --sout "#std{access=http,mux=ts,dst=:8090/stream}" --sout-keep
-```
-
-In a second PowerShell window, run detection using the local HTTP relay:
-
-```powershell
-python vision/tray_object_pipeline.py --url http://127.0.0.1:8090/stream
-```

@@ -119,9 +119,9 @@ class Task1Lens(TaskScene):
         self.say("Straight lines look **curved**, most at the **edges**", Create(ruler))
         self.play(FadeOut(ruler))
 
-        corners = VGroup(*(Dot(barrel(np.array([(c - 3) * 0.55, (2.5 - r) * 0.55, 0])) + UP * 0.4,
-                               radius=0.05, color=RED)
-                           for r in range(1, 6) for c in range(0, 7)))
+        corners = VGroup(*(Dot(barrel(np.array([(c - 3) * 0.55, (2 - r) * 0.55, 0])) + UP * 0.4,
+                               radius=0.06, color=RED)
+                           for r in range(5) for c in range(7)))
         self.say("Step 1: find the board's **inside corners**",
                  LaggedStart(*(FadeIn(d, scale=0.5) for d in corners), lag_ratio=0.03))
 
@@ -175,8 +175,8 @@ class Task2Records(TaskScene):
         self.play(FadeIn(rows[2], shift=DOWN * 0.2), run_time=0.5)
 
         green = Dot([-3.8, 0.6, 0], radius=0.25, color=GREEN)
-        unknown = mono('"color": "unknown"', 20, YELLOW).move_to(card_text[2], aligned_edge=LEFT)
-        self.say("Not red, blue or purple $\\to$ **\"unknown\"**: robot skips it",
+        unknown = mono('"color": "unknown"', 17, YELLOW).move_to(card_text[2], aligned_edge=LEFT)
+        self.say("Not red, blue or purple $\\to$ **unknown**: robot skips it",
                  ReplacementTransform(cap, green), Transform(card_text[2], unknown))
 
 
@@ -343,19 +343,22 @@ class Task5PickLoop(TaskScene):
                  FadeOut(outline), FadeOut(ok), run_time=1.3)
 
         steps = ["park", "picture", "check", "pick"]
-        pos = [np.array([4.6 + 1.1 * np.cos(t), 0.9 + 0.9 * np.sin(t), 0])
+        pos = [np.array([5.0 + 1.1 * np.cos(t), -0.9 + 0.9 * np.sin(t), 0])
                for t in (np.pi / 2, 0, -np.pi / 2, np.pi)]
         loop = VGroup(*(label(s, 24, YELLOW).move_to(p) for s, p in zip(steps, pos)))
         arcs = VGroup(*(CurvedArrow(pos[i] + (pos[(i + 1) % 4] - pos[i]) * 0.3,
                                     pos[(i + 1) % 4] - (pos[(i + 1) % 4] - pos[i]) * 0.3,
                                     angle=-np.pi / 3, color=GREY, stroke_width=2)
                         for i in range(4)))
-        self.play(FadeOut(bin_red), FadeOut(bin_l), FadeIn(loop), FadeIn(arcs))
+        self.play(FadeOut(bin_red), FadeOut(bin_l), FadeOut(caps[0]), FadeIn(loop), FadeIn(arcs))
         self.play(LaggedStart(*(Indicate(s, color=WHITE) for s in loop), lag_ratio=0.5), run_time=2)
 
-        cover = Polygon([1.2, 1.0, 0], [3, 1.0, 0], [3, 0.0, 0], color=RED, stroke_width=4)
-        self.say("Tray covered $\\to$ !!bent!!: no pick, wait", Create(cover), Indicate(loop[2], color=RED))
-        self.wait(0.6)
+        bent = Polygon([-3, -2.0, 0], [3, -2.0, 0], [3, 0.2, 0], [2.4, 0.4, 0], [-3, 1.0, 0],
+                       color=RED, stroke_width=4)
+        self.say("Arm still over a corner $\\to$ !!bent!!: no pick, wait",
+                 Transform(arm, arm_to([2.7, 0.8, 0])), run_time=1.2)
+        self.play(Create(bent), Indicate(loop[2], color=RED), loop[3].animate.set_opacity(0.3))
+        self.wait(1.2)
 
 
 SCENES = {1: Task1Lens, 2: Task2Records, 3: Task3PositionTest,
