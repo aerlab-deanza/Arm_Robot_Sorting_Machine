@@ -16,7 +16,7 @@
 - [Current pipeline](docs/computer_vision_pipeline.md) — Steps, algorithms, and current output.
 - [Findings and setup decisions](docs/documentation.md) — Image comparisons showing why we chose this setup.
 - [Pipeline limits](docs/limitation.md) — Current limits and work needed before automatic picking.
-- [Video project](video/README.md) — Manim animations, narration, and render commands.
+- [Task Delegation](docs/task_delegation.md) — Manim animations, narration, and render commands.
 
 ### Important files
 
