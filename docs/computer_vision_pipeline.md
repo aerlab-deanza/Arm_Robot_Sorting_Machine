@@ -125,12 +125,18 @@ The skewed tray becomes a rectangle. See the detection view in step 7.
 
 **Algorithms and filters:**
 
-- **HSV thresholding (`inRange`)** marks red, orange, and purple pixels.
+- **HSV thresholding (`inRange`)** marks orange, blue, and purple pixels.
 - **Morphological opening** removes small specks.
 - **Morphological closing** joins small gaps in a colored region.
 - **Contour detection (`findContours`)** traces each region. The program measures its size and center.
 - **Area and aspect-ratio filters** remove regions that are too small or too long and narrow.
 - **Overlap suppression** removes smaller boxes mostly inside larger boxes. This helps avoid duplicates.
+- **Object tracking over frames (`ObjectTracker`)** keeps boxes steady. Each frame is checked from scratch, so camera noise and glare make boxes jump or blink. The tracker:
+  - matches each object to the same-color object from the last frame (the nearest one),
+  - shows an object only after it's seen in 3 of the last 5 frames, so one-frame specks never show,
+  - keeps showing it through a missed frame or two, so it doesn't blink,
+  - draws the middle value (median) of its last 5 boxes, so one bad frame doesn't move it.
+  - Cost: a new or removed cap shows up or disappears about 3 frames late. A moving cap's box trails it by ~2 frames.
 
 **Why:** Find the project’s bright objects without training a model.
 
@@ -148,7 +154,7 @@ Duplicate boxes and the center of each region:
 
 **Learn:** [Morphology](https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html), [contours](https://docs.opencv.org/4.x/df/d0d/tutorial_find_contours.html)
 
-The green boxes mark objects. Blue dots mark their color-region centers.
+The green boxes mark objects (after tracking). Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
 
 The combined color mask selects the objects as white. The tray stays black.
 

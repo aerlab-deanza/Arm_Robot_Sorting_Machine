@@ -17,7 +17,7 @@ Our setup rules for the demo:
 - The tube rack is clamped in one place. It can't move or turn.
 - The rack sits away from the edge of the tray.
 - Tubes stand upright, one per slot in the rack.
-- Caps are only red, blue, or purple.
+- Caps are only orange, blue, or purple.
 - A team member watches every run, with the emergency stop button within reach. Nobody puts a hand in the tray while it runs.
 
 Problems already solved by these rules, and quick fixes, are not listed here. If we ever break a rule, its problem comes back.
@@ -28,7 +28,7 @@ Problems already solved by these rules, and quick fixes, are not listed here. If
 
 1. The camera takes a picture many times per second. Each picture is called a **frame**.
 2. The program finds the black tray in the picture.
-3. It looks for pixels that are red, orange, or purple. A **pixel** is one tiny dot of the picture.
+3. It looks for pixels that are orange, blue, or purple. A **pixel** is one tiny dot of the picture.
 4. Each group of same-colored pixels becomes a detected cap. The program draws a box around it and marks its middle.
 5. It reports where that middle is, as a fraction of the tray. For example, "62% of the way across, 35% of the way down".
 
@@ -104,7 +104,7 @@ Send one record per cap, every time the camera takes a picture. Example:
 
 ```json
 {"frame": 1042, "time_ms": 1730000123456, "slot": "B3",
- "color": "red", "color_confidence": 0.94,
+ "color": "orange", "color_confidence": 0.94,
  "x_mm": 212.4, "y_mm": -38.0, "z_mm": 96.0, "error_mm": 3.0,
  "tray_x_mm": 145.0, "tray_y_mm": 80.5, "calibration": "2026-10-26"}
 ```
@@ -114,7 +114,7 @@ Send one record per cap, every time the camera takes a picture. Example:
 | `frame` | Which camera picture this came from | Ties every record to one moment |
 | `time_ms` | When that picture was taken | The robot can ignore old positions |
 | `slot` | Which rack slot the cap is in, like "B3" | The robot moves to that slot's saved position (part 2) |
-| `color` | red, blue, purple, or `unknown` | Decides which bin it goes in |
+| `color` | orange, blue, purple, or `unknown` | Decides which bin it goes in |
 | `color_confidence` | 0 to 1: how sure the color is | Low confidence → skip it, don't guess |
 | `x_mm`, `y_mm`, `z_mm` | Position compared to the arm's base, from part 1 | Checks the slot, and is used if a cap isn't in a slot |
 | `error_mm` | How far off this position might be, from the calibration test | The robot can refuse positions it can't trust |
@@ -140,7 +140,7 @@ Also save every record to a log file, one line each. The tests can then compare 
 - The arm stands behind the tray, on the far side from the camera. In the picture it appears right at the tray's far edge, and it covers more of the tray when it reaches in.
 - **If the arm is dark** (black or grey), the program can't tell where the arm ends and the tray begins. The two join into one strange shape. The program then rejects it as "not a rectangle", or puts the tray corners in the wrong place. If the joined shape runs to the top edge of the picture, the program throws the whole tray away, because it ignores dark areas that touch the picture's edge.
 - **If the arm is light or colored**, it covers part of the tray's edge. Over the middle of an edge this is fine: the outline stretches over the gap like a rubber band. But over a **corner**, the corner itself is hidden, and it gets placed in the wrong spot.
-- **If the arm has red, blue, or purple parts** inside the tray outline, the program can mistake them for caps.
+- **If the arm has orange, blue, or purple parts** inside the tray outline, the program can mistake them for caps.
 - When the tray isn't found, the program finds no caps at all. When its corners are wrong, every cap position is wrong too.
 
 **Fix:**

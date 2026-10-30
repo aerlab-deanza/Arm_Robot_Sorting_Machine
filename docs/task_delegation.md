@@ -196,8 +196,8 @@ Represent every detected cap as a **record**, which is a structured collection o
 **What do I build?**
 Write one function that creates a record containing exactly the fields listed in [Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet) under "How each position should be recorded." Write another function that appends the record to the log file, adding one line for each cap detected.
 
-**What if the color isn't red, blue, or purple?**
-If the program cannot identify a cap as red, blue, or purple, set its color field to `"unknown"`. An unknown color should stay visible in the log for later review, but the pick loop should not send that cap to a bin based on a guess.
+**What if the color isn't orange, blue, or purple?**
+If the program cannot identify a cap as orange, blue, or purple, set its color field to `"unknown"`. An unknown color should stay visible in the log for later review, but the pick loop should not send that cap to a bin based on a guess.
 
 **Do I need another task first?**
 No earlier task is required. Because the records can be created from made-up values, this is a useful task to start with while other work is still underway.
@@ -224,7 +224,7 @@ The record and logging functions do not need a special camera-specific implement
 
 **File:** `vision/records.py`
 ```python
-COLORS = ("red", "blue", "purple")
+COLORS = ("orange", "blue", "purple")
 
 def make_record(frame, time_ms, color, color_confidence, xyz_mm, slot,
                 error_mm, tray_xy_mm, calibration):
@@ -246,7 +246,7 @@ from vision.records import make_record, write_log
 FIELDS = {"frame", "time_ms", "slot", "color", "color_confidence", "x_mm", "y_mm",
           "z_mm", "error_mm", "tray_x_mm", "tray_y_mm", "calibration"}
 
-def fake(i, color="red"):
+def fake(i, color="orange"):
     return make_record(i, 1730000000000 + i * 33, color, 0.9, (212.4, -38.0, 96.0),
                        "B3", 3.0, (145.0, 80.5), "2026-10-26")
 
@@ -509,7 +509,7 @@ def go(answers):
     answers = iter(answers)
     run(arm, camera,
         find_tray=lambda img: "outline",
-        find_caps=lambda img, outline: [(200, 0, 96, "red")],
+        find_caps=lambda img, outline: [(200, 0, 96, "orange")],
         check=lambda new, last: next(answers),
         picks=3)
     return arm.log

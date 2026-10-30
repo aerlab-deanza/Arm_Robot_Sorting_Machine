@@ -188,26 +188,29 @@ def rectify_tray(frame, quad):
     return cv2.warpPerspective(frame, transform, (width, height)), transform
 
 
+# Light blue is pale (saturation 51-133 on our camera), so blue gets a lower
+# saturation limit than the other colors.
+# Blue Min Saturation is to capture both light blue and deep blue
+BLUE_MIN_SATURATION = 50
+
+
 def color_masks(warped, min_saturation, min_value):
-    """Return basic HSV masks for red, orange, and purple project objects."""
+    """Return basic HSV masks for orange, blue, and purple project objects."""
     hsv = cv2.cvtColor(warped, cv2.COLOR_BGR2HSV)
     smin, vmin = min_saturation, min_value
 
-    red = cv2.bitwise_or(
-        cv2.inRange(
-            hsv, np.array([0, smin, vmin], dtype=np.uint8),
-            np.array([7, 255, 255], dtype=np.uint8),
-        ),
-        cv2.inRange(
-            hsv, np.array([170, smin, vmin], dtype=np.uint8),
-            np.array([179, 255, 255], dtype=np.uint8),
-        ),
-    )
     masks = {
-        "red": red,
+        # Skin is hue 16-23 on our camera, so hands in the tray can be
+        # detected as orange. Keep hands out of the tray while it runs.
+        # color is for masking the 
         "orange": cv2.inRange(
             hsv, np.array([8, smin, vmin], dtype=np.uint8),
             np.array([24, 255, 255], dtype=np.uint8),
+        ),
+        # Covers light blue (hue 87-104) and dark blue (hue 109-115).
+        "blue": cv2.inRange(
+            hsv, np.array([88, BLUE_MIN_SATURATION, vmin], dtype=np.uint8),
+            np.array([124, 255, 255], dtype=np.uint8),
         ),
         "purple": cv2.inRange(
             hsv, np.array([125, smin, vmin], dtype=np.uint8),
@@ -257,8 +260,8 @@ def find_objects(warped, masks, min_object_area_ratio, max_aspect_ratio=1.9):
                 "box": (x, y, box_w, box_h),
                 "area": area,
             })
-    # One physical item can produce separate hue regions (especially the
-    # orange ball under glare). Keep the largest candidate when boxes overlap.
+    # One physical item can produce separate hue regions (especially a
+    # ball under glare). Keep the largest candidate when boxes overlap.
     objects.sort(key=lambda obj: obj["area"], reverse=True)
     kept = []
     for obj in objects:
@@ -274,7 +277,7 @@ def find_objects(warped, masks, min_object_area_ratio, max_aspect_ratio=1.9):
             overlap_of_smaller = (
                 intersection / float(smaller_box_area) if smaller_box_area else 0.0
             )
-            # Small red/orange patches inside a larger ball are color
+            # Small color patches inside a larger ball are color
             # variation or glare, not separate objects.
             if ((union and intersection / union >= 0.30) or
                     overlap_of_smaller >= 0.75):
@@ -283,6 +286,69 @@ def find_objects(warped, masks, min_object_area_ratio, max_aspect_ratio=1.9):
         if not duplicate:
             kept.append(obj)
     return kept
+
+
+class ObjectTracker:
+    """Steady object boxes across frames.
+
+    Each frame is detected from scratch, so noise and glare make boxes jump
+    or blink. This tracker matches each detection to the same-color object
+    from earlier frames, shows an object only once it was seen in
+    `min_hits` of the last `window` frames, and reports the median box and
+    center of its recent detections.
+    """
+
+    def __init__(self, window=5, min_hits=3, match_distance=0.08):
+        self.window = window
+        self.min_hits = min_hits
+        # Largest center move between frames, as a fraction of the tray size.
+        self.match_distance = match_distance
+        self.tracks = []
+
+    def reset(self):
+        self.tracks = []
+
+    def update(self, objects):
+        """Add this frame's detections; return the steady objects."""
+        unmatched = list(objects)
+        for track in self.tracks:
+            last = track["recent"][-1]
+            best, best_distance = None, self.match_distance
+            for obj in unmatched:
+                if obj["color"] != track["color"]:
+                    continue
+                distance = float(np.hypot(obj["u"] - last["u"], obj["v"] - last["v"]))
+                if distance <= best_distance:
+                    best, best_distance = obj, distance
+            if best is not None:
+                unmatched.remove(best)
+                track["recent"].append(best)
+                track["recent"] = track["recent"][-self.window:]
+            track["seen"].append(best is not None)
+            track["seen"] = track["seen"][-self.window:]
+
+        for obj in unmatched:
+            self.tracks.append({"color": obj["color"], "recent": [obj], "seen": [True]})
+        # Forget objects not seen at all in the last `window` frames.
+        self.tracks = [track for track in self.tracks if any(track["seen"])]
+
+        steady = []
+        for track in self.tracks:
+            if sum(track["seen"]) < self.min_hits:
+                continue
+            recent = track["recent"]
+            # Median ignores a single bad frame; a mean would be pulled by it.
+            boxes = np.median([obj["box"] for obj in recent], axis=0)
+            steady.append({
+                "color": track["color"],
+                "cx": float(np.median([obj["cx"] for obj in recent])),
+                "cy": float(np.median([obj["cy"] for obj in recent])),
+                "u": float(np.median([obj["u"] for obj in recent])),
+                "v": float(np.median([obj["v"] for obj in recent])),
+                "box": tuple(int(round(value)) for value in boxes),
+                "area": float(np.median([obj["area"] for obj in recent])),
+            })
+        return steady
 
 
 def open_capture(url, transport):
@@ -442,6 +508,7 @@ def main():
     last_report = 0.0
     failures = 0
     tray_tracker = TrayQuadTracker()
+    object_tracker = ObjectTracker()
     settle_until = None
 
     try:
@@ -505,6 +572,7 @@ def main():
             quad = tray_tracker.update(detected_quad, frame.shape)
             overview = frame.copy()
             if quad is None:
+                object_tracker.reset()
                 cv2.putText(
                     overview, "TRAY NOT FOUND", (20, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2,
@@ -525,9 +593,11 @@ def main():
             masks = color_masks(
                 warped, args.object_min_saturation, args.object_min_value
             )
-            objects = find_objects(
+            detections = find_objects(
                 warped, masks, args.object_min_area_ratio, args.object_max_aspect
             )
+            # Boxes, centers and the printout use the steady objects.
+            objects = object_tracker.update(detections)
             labels = warped.copy()
             combined_mask = np.zeros(warped.shape[:2], dtype=np.uint8)
             for color, mask in masks.items():
@@ -538,7 +608,7 @@ def main():
                 cv2.circle(labels, (int(obj["cx"]), int(obj["cy"])), 5, (255, 0, 0), -1)
                 cv2.putText(
                     labels, obj["color"], (x, max(20, y - 6)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
                 )
 
             cv2.putText(
