@@ -13,6 +13,10 @@
 ## Computer Vision
 ### Documents
 
+The docs have animations and plain-language explanations. Click a link below to open one.
+
+![Tour of the docs: each guide has animations and short explanations](docs/images/docs-tour.gif)
+
 - [Current pipeline](docs/computer_vision_pipeline.md) — Steps, algorithms, and current output.
 - [Findings and setup decisions](docs/documentation.md) — Image comparisons showing why we chose this setup.
 - [Pipeline limits](docs/limitation.md) — Current limits and work needed before automatic picking.
