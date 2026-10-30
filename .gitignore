@@ -2,3 +2,5 @@ phong_local_notes
 .claude
 __pycache__/
 docs/animations/media
+AGENTS.md
+CLAUDE.md
