@@ -152,8 +152,8 @@ class Task2Records(TaskScene):
         self.play(FadeOut(lines, shift=UP * 0.5), run_time=1)
 
         cap = Dot([-3.8, 0.6, 0], radius=0.25, color=RED)
-        fields = ['"frame": 1042', '"slot": "B3"', '"color": "red"',
-                  '"x_mm": 212.4', '"y_mm": -38.0', '"z_mm": 96.0', '"time_ms": ...']
+        fields = ['"frame": 1042', '"time_ms": ...', '"color": "red"',
+                  '"u": 0.412', '"v": 0.688', '"center_x": 206.0', '"area": 780.0']
         card_text = VGroup(*(mono(f, 20) for f in fields)).arrange(DOWN, aligned_edge=LEFT, buff=0.1)
         card_box = SurroundingRectangle(card_text, color=BLUE, buff=0.25, corner_radius=0.1)
         card = VGroup(card_box, card_text).move_to([1.0, 0.6, 0])

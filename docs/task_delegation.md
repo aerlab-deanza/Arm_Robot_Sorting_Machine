@@ -21,10 +21,10 @@ In the commands below, text inside angle brackets is a placeholder. Replace it w
 | Task | Your branch name |
 | --- | --- |
 | 1 Fix camera distortion | `task1-lens` |
-| 2 Save cap detections | `task4-records` |
-| 3 Check cap positions | `task5-position-test` |
-| 4 Check the tray outline | `task6-outline-check` |
-| 5 Run the pick cycle | `task7-pick-loop` |
+| 2 Save cap detections | `task2-records` |
+| 3 Check cap positions | `task3-position-test` |
+| 4 Check the tray outline | `task4-outline-check` |
+| 5 Run the pick cycle | `task5-pick-loop` |
 
 The **How do I push?** section in each task lists the files and commands for that task. You can copy those commands after replacing any placeholders with your own values.
 
@@ -188,36 +188,52 @@ def test_undistort_keeps_size(tmp_path):
 ![Task 2: Save cap detections](images/tasks/task-2.gif)
 
 **What's wrong now?**
-The program currently prints detected positions to the screen periodically. Printed output is difficult to use later: it is not saved as structured data, and different parts of the system may not agree on the names or order of the values. The robot code also needs a consistent format it can read. ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet))
+The pipeline prints the caps it sees once per second, then forgets them. Printed text is hard to use later: it is not saved, and each part of the system may read the values differently. The robot code also needs one fixed format. ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet))
+
+**What does the pipeline give me today?**
+For each cap, `find_objects()` / `ObjectTracker` give a dict with:
+
+| Key | Meaning |
+| --- | --- |
+| `color` | `"red"`, `"blue"` or `"purple"` |
+| `u`, `v` | Cap center as a fraction of the tray (0-1). `u` across, `v` down. |
+| `center_x`, `center_y` | Cap center in pixels, on the straightened tray picture |
+| `box` | `(x, y, width, height)` in pixels |
+| `area` | Cap size in pixels |
+
+There are **no millimeters, no slot and no color confidence yet.** Those come later (pixel → mm is [Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet); Task 3 checks it). Task 2 saves what exists today.
 
 **What's the idea?**
-Represent every detected cap as a **record**, which is a structured collection of values such as its color, slot, position, and detection time. Use the field names agreed by the team so the robot code, tests, and people all interpret the values in the same way. Append each record as its own line in a **log file**, which makes it possible to inspect detections after a run.
+Turn every detected cap into a **record**: a small dict with fixed field names, plus the frame number and the time. Add each record as one line in a **log file**. Later tasks add the extra fields (`x_mm`, `y_mm`, `slot`, …) to the same record, so keep the code easy to extend.
 
 **What do I build?**
-Write one function that creates a record containing exactly the fields listed in [Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet) under "How each position should be recorded." Write another function that appends the record to the log file, adding one line for each cap detected.
+- `make_record(frame, time_ms, obj)`: takes one cap dict from the pipeline, returns a record with exactly these fields: `frame, time_ms, color, u, v, center_x, center_y, box, area`.
+- `write_log(record, path)`: adds the record as one line at the end of the log file.
 
 **What if the color isn't red, blue, or purple?**
-If the program cannot identify a cap as red, blue, or purple, set its color field to `"unknown"`. An unknown color should stay visible in the log for later review, but the pick loop should not send that cap to a bin based on a guess.
+The pipeline only reports these 3 colors today. But if `color` is anything else, store `"unknown"`. It stays visible in the log for review. The pick loop must not send an `"unknown"` cap to a bin.
 
 **Do I need another task first?**
-No earlier task is required. Because the records can be created from made-up values, this is a useful task to start with while other work is still underway.
+No. You can build records from made-up caps, so start with this while other work is underway.
 
 **How do I test without the camera?**
-Create a few sample records directly in your test code or in a fixture file. For example, you could make a record for a red cap assigned to slot B3 at x = 212.4 mm, y = -38.0 mm, and z = 96.0 mm. This lets you test logging without connecting the camera.
+Write a fake cap dict in your test, the same shape the pipeline gives. For example, a red cap at `u = 0.412`, `v = 0.688`. No camera and no OpenCV needed.
 
 **How do I know it works?**
-Write three sample records and check that the log contains exactly three lines. Read each line back and confirm that it contains all the required fields and no extra fields. Also check that an unsupported color, such as green, is stored as `"unknown"`.
+- Write 3 records. The log has exactly 3 lines.
+- Read each line back. It has all the fields above and no extra ones.
+- A cap with color `"green"` is stored as `"unknown"`.
 
 **How do I push?**
-Branch `task4-records`.
+Branch `task2-records`.
 ```
 git add vision/records.py tests/test_records.py
-git commit -m "Task 4: records + log"
-git push -u origin task4-records
+git commit -m "Task 2: records + log"
+git push -u origin task2-records
 ```
 
 **What changes with the real camera?**
-The record and logging functions do not need a special camera-specific implementation. When you begin creating logs during real runs, add the `logs/` folder to `.gitignore` so machine-generated run data does not accidentally get added to source code commits.
+Nothing in the functions. In `main()`, call `make_record` and `write_log` for each object in the steady `objects` list (the one that is printed once per second). Add `logs/` to `.gitignore` so run data is not committed.
 
 <details>
 <summary><b>Code help</b> (click to open)</summary>
@@ -226,16 +242,15 @@ The record and logging functions do not need a special camera-specific implement
 ```python
 COLORS = ("red", "blue", "purple")
 
-def make_record(frame, time_ms, color, color_confidence, xyz_mm, slot,
-                error_mm, tray_xy_mm, calibration):
-    """→ dict with exactly the fields from limitation.md. Unknown color → "unknown"."""
+def make_record(frame, time_ms, obj):
+    """obj = one cap dict from the pipeline → record dict. Other color → "unknown"."""
 
 def write_log(record, path="logs/detections.jsonl"):
     """Add the record as 1 JSON line at the end of the file."""
 ```
 
 **Steps:**
-1. `make_record`: build the dict. Field names exactly: `frame, time_ms, slot, color, color_confidence, x_mm, y_mm, z_mm, error_mm, tray_x_mm, tray_y_mm, calibration`. Round mm to 1 decimal.
+1. `make_record`: build the dict. Field names exactly: `frame, time_ms, color, u, v, center_x, center_y, box, area`. Round `u`, `v` to 3 decimals, `center_x`, `center_y` to 1. Make `box` a list of ints (JSON has no tuples).
 2. `write_log`: make the folder if missing, `open(path, "a")`, write `json.dumps(record) + "\n"`.
 
 **Test:** `tests/test_records.py`
@@ -243,12 +258,14 @@ def write_log(record, path="logs/detections.jsonl"):
 import json
 from vision.records import make_record, write_log
 
-FIELDS = {"frame", "time_ms", "slot", "color", "color_confidence", "x_mm", "y_mm",
-          "z_mm", "error_mm", "tray_x_mm", "tray_y_mm", "calibration"}
+FIELDS = {"frame", "time_ms", "color", "u", "v", "center_x", "center_y", "box", "area"}
+
+def fake_cap(color="red"):
+    return {"color": color, "u": 0.412, "v": 0.688, "center_x": 206.0,
+            "center_y": 151.4, "box": (190, 135, 32, 33), "area": 780.0}
 
 def fake(i, color="red"):
-    return make_record(i, 1730000000000 + i * 33, color, 0.9, (212.4, -38.0, 96.0),
-                       "B3", 3.0, (145.0, 80.5), "2026-10-26")
+    return make_record(i, 1730000000000 + i * 33, fake_cap(color))
 
 def test_log_lines(tmp_path):
     path = tmp_path / "log.jsonl"
@@ -280,7 +297,7 @@ Place caps in slots whose locations are known, then process them through the com
 Write a function that compares the detection records with the reference measurements and produces one row of results for each cap. Then write a function that saves these rows to a CSV file, which can be opened and reviewed as a table.
 
 **Do I need another task first?**
-This test checks the record and position outputs together. Until the record task is ready, use clearly marked sample records, then replace them with the real implementation.
+This test checks the record and position outputs together. Task 2 records only hold what the pipeline gives today (`color`, `u`, `v`, pixels, `box`, `area`). This task needs records that also have `x_mm`, `y_mm` and `slot`. Those fields come from the pixel-to-mm step and the slot map ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet)). Until they exist, use clearly marked sample records that already contain them, then replace them with the real implementation.
 
 **How do I test without the camera?**
 Create a reference CSV with nine slot names and their known coordinates. Use a known synthetic camera mapping to convert those positions into fake pixels. The pipeline should recover the expected coordinates and assign each cap to the correct slot.
@@ -289,11 +306,11 @@ Create a reference CSV with nine slot names and their known coordinates. Use a k
 With the fake data, all nine caps should pass when the accepted position error is set to 5 mm. To confirm that the check can also catch a problem, shift one cap's pixel by 40 pixels, which is about 10 mm in the example mapping. That cap should fail while the others continue to pass.
 
 **How do I push?**
-Branch `task5-position-test`.
+Branch `task3-position-test`.
 ```
 git add vision/position_test.py tests/test_position_test.py tests/fake_data/ruler.csv
-git commit -m "Task 5: full position test"
-git push -u origin task5-position-test
+git commit -m "Task 3: full position test"
+git push -u origin task3-position-test
 ```
 
 **What changes with the real camera and arm?**
@@ -360,11 +377,11 @@ You can test the classification logic without a camera by creating outline coord
 Check several example cases: a 2-pixel change in the corners should be classified as `"same"`; a 40-pixel shift of all four corners should be `"moved"`; and a 40-pixel shift of just one corner should be `"bent"`. A generated image with a dark shape on a tray corner should also produce a `"bent"` result. Finally, a sequence of outlines that jumps back and forth should be reported as not stable.
 
 **How do I push?**
-Branch `task6-outline-check`.
+Branch `task4-outline-check`.
 ```
 git add vision/outline_check.py tests/test_outline_check.py
-git commit -m "Task 6: outline check"
-git push -u origin task6-outline-check
+git commit -m "Task 4: outline check"
+git push -u origin task4-outline-check
 ```
 
 **What changes with the real camera?**
@@ -450,11 +467,11 @@ Create a fake arm whose methods only add commands such as `park`, `move`, and `p
 For a valid cap, check that the loop parks the arm, captures an image, checks the outline, and then commands the arm to move, pick, and drop the cap. Confirm that the arm is parked again when the loop finishes. If the outline check returns `"bent"`, the loop must skip picking during that cycle. If it returns `"moved"`, the loop should issue a warning so the operator knows the tray position may have changed.
 
 **How do I push?**
-Branch `task7-pick-loop`.
+Branch `task5-pick-loop`.
 ```
 git add vision/pick_loop.py tests/test_pick_loop.py
-git commit -m "Task 7: pick loop"
-git push -u origin task7-pick-loop
+git commit -m "Task 5: pick loop"
+git push -u origin task5-pick-loop
 ```
 
 **What changes with the real arm?**
