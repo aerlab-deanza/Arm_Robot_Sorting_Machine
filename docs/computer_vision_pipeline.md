@@ -83,11 +83,11 @@ If the program says “TRAY NOT FOUND,” check the threshold and outline before
 
 ![Exponential moving average, jump confirmation, and the 2-second countdown](images/pipeline/04-steady.gif)
 
-First detection starts a 2-second countdown. Move your hand away. The program uses the latest detection after the countdown, then smooths corner changes. This timer does not detect hands.
+First detection starts a 1.25-second countdown ("LOCALIZE TRAY" on screen). Keep your hand out of the tray. The program uses the latest detection after the countdown, then smooths corner changes. This timer does not detect hands.
 
 The tracker keeps the last outline through up to 8 missed frames. Large jumps need 3 similar detections.
 
-**Lock the outline (`TrayLock`).** Glare can still bend the outline. So once the outline stays still for 2 seconds, it **locks**: it turns cyan, the screen says `TRAY LOCKED`, and glare can't move it anymore.
+**Lock the outline (`TrayLock`).** Glare can still bend the outline. So once the outline stays still for 0.75 seconds, it **locks**: it turns cyan, the screen says `TRAY LOCKED`, and glare can't move it anymore.
 
 - A hand or the arm hiding the tray doesn't unlock it.
 - It unlocks by itself only if the same-sized tray shows up clearly somewhere else for about 1 second. That means the tray really moved. Glare changes the tray's shape, so it doesn't count.
@@ -133,6 +133,7 @@ The skewed tray becomes a rectangle. See the detection view in step 7.
 **Algorithms and filters:**
 
 - **HSV thresholding (`inRange`)** marks red, blue, and purple pixels. Blue means dark blue only: on our camera, glare on the dark tray looks light blue.
+- **Brightness scaling (`scale_tray_brightness`).** If the camera's auto exposure makes the tray too bright, the straightened picture is darkened until the tray's median brightness is 50. Every pixel's brightness is multiplied by the same number, so hue and saturation (the color) don't change. It only darkens (a dark tray is left alone), and never by more than a factor of 0.4. Turn it off or change it with `--tray-target-brightness` (0 = off). The color step's debug text shows the number it used, for example `x0.62`.
 - **Brightness floor that follows the tray.** The camera's color balance drifts: the black tray has looked yellowish, and later navy blue (as blue as a blue cap). So each frame, the program measures the tray's typical brightness. A pixel only counts as a cap color if it's at least 25 brighter than the tray.
 - **Morphological opening** removes small specks.
 - **Morphological closing** joins small gaps in a colored region.

@@ -392,7 +392,7 @@ def is_still(recent_outlines, drift_px=10):
 **Fake data:**
 ```python
 import numpy as np, cv2
-from vision.tray_object_pipeline import tray_quad
+from vision.tray_object_pipeline import find_tray_corners
 
 GOOD = np.float32([[100, 80], [700, 80], [700, 380], [100, 380]])   # ratio 2.0
 ARGS = (0, 179, 0, 0, 130, 85, 0.04, 9)                              # pipeline defaults
@@ -412,10 +412,10 @@ def test_bent():
     new = GOOD.copy(); new[1] += (40, -20)
     assert check_outline(new, GOOD, 2.0) == "bent"
 
-def test_dark_blob_on_corner():               # tray_quad moves that corner ~40 px
+def test_dark_blob_on_corner():               # find_tray_corners moves that corner ~40 px
     img = picture()
     cv2.circle(img, (700, 80), 40, (40, 40, 40), -1)
-    new, _ = tray_quad(img, *ARGS)
+    new, _ = find_tray_corners(img, *ARGS)
     assert check_outline(new, GOOD, 2.0) == "bent"
 
 def test_not_still():

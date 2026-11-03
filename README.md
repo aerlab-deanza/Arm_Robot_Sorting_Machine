@@ -46,7 +46,7 @@ python -m pip install -r requirements.txt
 
 Run tray and object detection with camera
 
-The pipeline looks for a black tray. It waits 2 seconds after first finding it, so move your hand away during this time. The mask follows the detected tray corners.
+The pipeline looks for a black tray. It waits 1.25 seconds after first finding it, so keep your hand out of the tray during this time. The mask follows the detected tray corners.
 
 USB Camera:
 ```powershell
