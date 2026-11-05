@@ -26,6 +26,7 @@ PURPLE = "#B07CE8"
 DARK_BLUE = "#3B7BEA"  # the pipeline detects dark blue only
 TABLE = "#B9A47C"
 TRAY = "#1C1C1C"
+CYAN = "#00FFFF"  # the locked outline is cyan in the program
 task_gifs.MARKS.update({"%%": PURPLE, "@@": DARK_BLUE})
 
 # The tray as the camera sees it: a skewed four-sided shape.
@@ -113,6 +114,9 @@ class PipelineRecap(TaskScene):
                  Transform(outline, Polygon(*QUAD, color=GREEN, stroke_width=5).shift(up)),
                  *(d.animate.move_to(p + up) for d, p in zip(corners, QUAD)), run_time=1.0)
 
+        self.say("Still for 0.75 s: the outline **locks** (cyan)",
+                 outline.animate.set_color(CYAN), run_time=0.8, hold=0.4)
+
         # 5. Mask: keep only the tray
         self.say("Fill the outline, keep **only the tray**",
                  tray.animate.set_fill(TRAY),
@@ -124,11 +128,16 @@ class PipelineRecap(TaskScene):
         self.say("**Straighten** the tray into a rectangle",
                  FadeOut(table),
                  Transform(tray, Polygon(*RECT, stroke_width=0).set_fill(TRAY, 1).shift(up)),
-                 Transform(outline, Polygon(*RECT, color=GREEN, stroke_width=5).shift(up)),
+                 Transform(outline, Polygon(*RECT, color=CYAN, stroke_width=5).shift(up)),
                  *(d.animate.move_to(p + up) for d, p in zip(corners, RECT)),
                  *(c.animate.move_to(p).stretch_to_fit_height(0.6) for c, p in zip(caps, rect_caps)),
                  run_time=1.6)
         self.play(FadeOut(corners), outline.animate.set_stroke(GREY, 2), run_time=0.5)
+
+        # Too-bright tray: darken it before looking for colors.
+        self.say("Tray too bright? **Darken** it first",
+                 tray.animate.set_fill("#5A5A5A"), run_time=0.6, hold=0.1)
+        self.play(tray.animate.set_fill(TRAY), run_time=0.8)
 
         # 7. Color masks
         names = VGroup(*(label(n, 30, col).next_to(c, DOWN, buff=0.18)

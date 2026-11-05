@@ -87,10 +87,17 @@ For the working steps, see [current pipeline](computer_vision_pipeline.md). For 
 - **Virtual camera:** Index 2 showed an OBS placeholder in an earlier trial. Opening a device does not prove it is the physical USB camera.
 - **RTSP:** We saw timeouts even when the camera had an IP address. An IP address alone does not prove video is arriving.
 - **VLC relay:** Tried as an alternative input. A listening HTTP port did not guarantee usable frames. Keep it as a fallback, not a confirmed fix for every timeout.
-- **Preview windows:** All six views now open in a two-column grid. Makes each processing step easier to inspect.
+- **Preview windows:** All four views now open in a two-column grid. Makes each processing step easier to inspect.
 - **Threshold refresh:** The threshold must update while the tray is found too. Otherwise it looks frozen beside the live views.
 
-## 8. Why this approach, and what remains
+## 8. Steady outline, locked tray, steady boxes, bright tray
+
+- **Glare:** Glare on the dark tray bends the outline, even after smoothing. **Decision:** lock the outline once it stays still for 0.75 s (`TrayLock`). It stays locked when a hand hides the tray. It unlocks if a same-size tray appears moved for 1 s, or on `r`.
+- **Flicker:** Boxes jumped or blinked from frame to frame. **Decision:** `ObjectTracker` shows a cap only after it is seen in 3 of the last 5 frames, and draws the median box. **Tradeoff:** new or removed caps show about 3 frames late.
+- **Bright tray:** Auto exposure made the black tray look navy blue or bright, close to cap colors. **Decision:** darken the straightened tray to median brightness 50, and require cap pixels to be 25 brighter than the tray.
+- **Hands:** Red range needs saturation of at least 150. A hand in shadow reads hue 7-10 with lower saturation, and was detected as red at 50. **Limit:** pale pinkish red caps are no longer detected.
+
+## 9. Why this approach, and what remains
 
 - **Current choice:** OpenCV color filters and contours. Finds our bright objects without training images.
 - **Separate firmware:** The AMB82-Mini sketch also has a pretrained YOLO detector and a fixed tray polygon. That is a separate path from the Python pipeline.
