@@ -134,11 +134,6 @@ class PipelineRecap(TaskScene):
                  run_time=1.6)
         self.play(FadeOut(corners), outline.animate.set_stroke(GREY, 2), run_time=0.5)
 
-        # Too-bright tray: darken it before looking for colors.
-        self.say("Tray too bright? **Darken** it first",
-                 tray.animate.set_fill("#5A5A5A"), run_time=0.6, hold=0.1)
-        self.play(tray.animate.set_fill(TRAY), run_time=0.8)
-
         # 7. Color masks
         names = VGroup(*(label(n, 30, col).next_to(c, DOWN, buff=0.18)
                          for c, (n, col, _, _) in zip(caps, CAPS)))

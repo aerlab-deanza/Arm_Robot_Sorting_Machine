@@ -30,48 +30,6 @@ PURPLE_MIN_HUE = 125
 # later, navy blue (as blue as the caps). Only brightness still told them apart.
 TRAY_BRIGHTNESS_MARGIN = 25
 
-# Brightness scaling: the tray is darkened until its median brightness is this
-# value. Only darkening is done (a gain of 1 or less), and never by more than
-# MIN_BRIGHTNESS_GAIN, so noise isn't boosted and bright caps aren't crushed.
-DEFAULT_TARGET_TRAY_BRIGHTNESS = 50
-MIN_BRIGHTNESS_GAIN = 0.4
-
-
-def scale_tray_brightness(straight_tray, target_brightness=DEFAULT_TARGET_TRAY_BRIGHTNESS):
-    """Darken the straightened tray picture if the tray looks too bright.
-
-    The camera's auto exposure can make the black tray much brighter than
-    usual. This multiplies the brightness (HSV value) of every pixel by one
-    gain, so the tray's median brightness becomes ``target_brightness``. Hue
-    and saturation are not changed, so colors keep their meaning; only
-    brightness moves, and caps stay in the same brightness proportion to the
-    tray.
-
-    The gain is never above 1 (a dark tray is left alone) and never below
-    ``MIN_BRIGHTNESS_GAIN``.
-
-    Args:
-        straight_tray: Straightened tray image, BGR. The straightened view is
-            mostly tray, so its median brightness is the tray's.
-        target_brightness: Brightness the tray should end up at (0-255).
-            0 turns scaling off.
-
-    Returns:
-        A tuple ``(scaled_tray, gain)``. ``scaled_tray`` is the new BGR image
-        (the input itself when the gain is 1). ``gain`` is the number every
-        pixel's brightness was multiplied by.
-    """
-    if target_brightness <= 0:
-        return straight_tray, 1.0
-    hsv = cv2.cvtColor(straight_tray, cv2.COLOR_BGR2HSV)
-    tray_brightness = float(np.median(hsv[..., 2]))
-    if tray_brightness <= target_brightness:
-        return straight_tray, 1.0
-    gain = max(MIN_BRIGHTNESS_GAIN, target_brightness / tray_brightness)
-    hsv[..., 2] = np.clip(hsv[..., 2].astype(np.float32) * gain, 0, 255).astype(np.uint8)
-    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR), gain
-
-
 def min_cap_brightness(straight_tray_hsv, min_brightness):
     """Work out how bright a pixel must be to count as part of a cap.
 

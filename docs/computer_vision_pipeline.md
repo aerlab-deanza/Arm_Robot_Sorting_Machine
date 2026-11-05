@@ -5,7 +5,7 @@ Current steps. The code is in [tray_object_pipeline.py](../vision/tray_object_pi
 The PC pipeline starts from `vision/tray_object_pipeline.py`. It works with an RTSP stream or a USB camera.
 
 ```text
-Read image → find tray → steady and lock outline → straighten view → darken if too bright → find objects → steady boxes → report positions
+Read image → find tray → steady and lock outline → make mask → straighten view → find objects → steady boxes → report positions
 ```
 
 The examples below show the current black tray with red and purple objects.
@@ -107,11 +107,23 @@ The tracker keeps the last outline through up to 8 missed frames. Large jumps ne
 **Learn (beginner-friendly):**
 - [Exponential smoothing (Wikipedia)](https://en.wikipedia.org/wiki/Exponential_smoothing): the "blend new with old" idea. Our `new_outline_weight` is the smoothing factor.
 
-## 5. The tray mask (not used now)
+## 5. Make the tray mask
 
-Earlier versions filled the tray outline into a white mask and blacked out everything outside it. This was only a picture for the screen. Nothing else used it, so the program no longer draws the mask or the tray-only view.
+**Techniques:**
 
-Step 6 needs only the four tray corners from step 4. The program cuts out the tray there, so pixels outside the tray never reach the color step.
+- **Polygon filling (`fillConvexPoly`)** fills the area inside the tray corners with white.
+- **Binary masking (`bitwise_and`)** keeps the image where the mask is white. It blacks out the rest.
+
+**Why:** See which area the program selected. This is a check for you: step 6 straightens the tray from its four corners, not from this picture.
+
+![Fill the tray outline so the objects aren't cut out, then keep only the tray](images/pipeline/05-mask.gif)
+
+**Learn (beginner-friendly):**
+- [Image masking with OpenCV (PyImageSearch)](https://pyimagesearch.com/2021/01/19/image-masking-with-opencv/): draw a white shape, keep only what is inside it.
+
+The filled mask covers the tray and objects. No holes at the objects. Its border follows the tracked tray corners, with no added padding. It is shown in the "Tray mask" window.
+
+The tray-only view keeps the tray and objects. Pixels outside the tray become black. It is shown in the "Image restricted to tray" window.
 
 ## 6. Straighten the tray view
 
@@ -135,7 +147,6 @@ The skewed tray becomes a rectangle. See the detection view in step 7.
 **Algorithms and filters:**
 
 - **HSV thresholding (`inRange`)** marks red, blue, and purple pixels. Blue means dark blue only: on our camera, glare on the dark tray looks light blue.
-- **Brightness scaling (`scale_tray_brightness`).** If the camera's auto exposure makes the tray too bright, the straightened picture is darkened until the tray's median brightness is 50. Every pixel's brightness is multiplied by the same number, so hue and saturation (the color) don't change. It only darkens (a dark tray is left alone), and never by more than a factor of 0.4. Turn it off or change it with `--tray-target-brightness` (0 = off). The color step's debug text shows the number it used, for example `x0.62`.
 - **Brightness floor that follows the tray.** The camera's color balance drifts: the black tray has looked yellowish, and later navy blue (as blue as a blue cap). So each frame, the program measures the tray's typical brightness. A pixel only counts as a cap color if it's at least 25 brighter than the tray.
 - **Morphological opening** removes small specks.
 - **Morphological closing** joins small gaps in a colored region.
@@ -154,10 +165,6 @@ The skewed tray becomes a rectangle. See the detection view in step 7.
 Why the tray is black:
 
 ![White tray vs black tray: shadows and duplicate color regions](images/pipeline/07a-black-tray.gif)
-
-Darkening a bright tray, and the brightness floor:
-
-![Darken a too-bright tray, then keep only pixels 25 brighter than the tray](images/pipeline/07e-brightness.gif)
 
 Cleaning the color mask:
 

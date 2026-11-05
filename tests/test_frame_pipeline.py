@@ -56,6 +56,7 @@ def test_outline_locks_when_steady():
     pipeline, result = run(img, 3.0)
     assert pipeline.tray_lock.locked
     assert result.overview.shape == img.shape
+    assert result.tray_mask is not None and result.tray_only is not None
 
 
 def test_no_tray_gives_no_caps():

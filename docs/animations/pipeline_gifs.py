@@ -3,7 +3,7 @@
     python docs/animations/pipeline_gifs.py            # render all
     python docs/animations/pipeline_gifs.py hsv lock   # only these
 
-Names: hsv, steady, lock, cleanup, tracker, brightness.
+Names: hsv, steady, lock, cleanup, tracker.
 Needs Manim CE, LaTeX and FFmpeg. GIFs go to docs/images/pipeline/.
 The numbers on screen match vision/tray_object_pipeline.py. If you change
 a default there, change it here too.
@@ -449,63 +449,12 @@ class TrackerScene(FastScene):
         self.wait(1.2)
 
 
-# ------------------------------------------------------------ brightness
-
-class BrightnessScene(FastScene):
-    title = "Step 7: brightness of the tray"
-
-    def construct(self):
-        base = -2.0
-        scale = 0.016
-
-        def bar(x, value, color):
-            height = max(value * scale, 0.02)
-            return Rectangle(width=1.3, height=height, stroke_width=0).set_fill(color, 1).move_to(
-                [x, base + height / 2, 0])
-
-        xs = (-3.2, 0.0, 3.2)
-        axis = Line([-5.2, base, 0], [5.2, base, 0], color=GREY, stroke_width=2)
-        names = VGroup(*(label(t, 26, GREY).next_to([x, base, 0], DOWN, buff=0.2)
-                         for x, t in zip(xs, ("tray", "cap", "glare"))))
-        y_label = label("brightness (V)", 24, GREY).to_corner(UL, buff=0.35).shift(DOWN * 0.8)
-
-        tray, cap, glare = bar(xs[0], 100, "#555555"), bar(xs[1], 220, RED), bar(xs[2], 130, "#8899AA")
-        self.say("Auto exposure can make the black tray **too bright**",
-                 FadeIn(axis), FadeIn(names), FadeIn(y_label), FadeIn(tray), FadeIn(cap), FadeIn(glare))
-
-        target = DashedVMobject(Line([-5.2, base + 50 * scale, 0], [5.2, base + 50 * scale, 0],
-                                     color=YELLOW, stroke_width=2))
-        target_label = label("target: 50", 24, YELLOW).next_to(target, RIGHT, buff=0.1).shift(UP * 0.0)
-        gain = MathTex(r"\text{gain} = \frac{50}{100} = 0.50", font_size=34, color=YELLOW)
-        gain.to_corner(UL, buff=0.35).shift(RIGHT * 8.0 + DOWN * 0.7)
-        self.say("Multiply **every** pixel's brightness by one gain. Color stays",
-                 FadeIn(target), FadeIn(target_label), FadeIn(gain), run_time=0.8, hold=0.3)
-        self.play(Transform(tray, bar(xs[0], 50, "#555555")),
-                  Transform(cap, bar(xs[1], 110, RED)),
-                  Transform(glare, bar(xs[2], 65, "#8899AA")), run_time=1.4)
-        self.wait(0.4)
-
-        floor_y = base + 75 * scale
-        floor = Line([-5.2, floor_y, 0], [5.2, floor_y, 0], color=GREEN, stroke_width=4)
-        floor_label = label("cap floor: tray + 25 = 75", 24, GREEN).next_to(floor, UP, buff=0.1).align_to(floor, LEFT)
-        self.say("A cap pixel must be **25 brighter** than the tray",
-                 Create(floor), FadeIn(floor_label), run_time=0.8, hold=0.2)
-        verdicts = VGroup(
-            label(r"$\times$", 40, RED).next_to(tray, UP, buff=0.15),
-            label(r"\checkmark", 40, GREEN).next_to(cap, UP, buff=0.15),
-            label(r"$\times$", 40, RED).next_to(glare, UP, buff=0.15),
-        )
-        self.play(LaggedStart(*(FadeIn(v, scale=1.4) for v in verdicts), lag_ratio=0.3), run_time=1.0)
-        self.say("The tray and glare fail. Only the **cap** passes", hold=1.6)
-
-
 SCENES = {
     "hsv": (HsvScene, "02a-hsv.gif"),
     "steady": (SteadyScene, "04-steady.gif"),
     "lock": (LockScene, "04b-lock.gif"),
     "cleanup": (CleanupScene, "07b-cleanup.gif"),
     "tracker": (TrackerScene, "07d-steady-boxes.gif"),
-    "brightness": (BrightnessScene, "07e-brightness.gif"),
 }
 
 

@@ -48,8 +48,8 @@ Arm_Robot_Sorting_Machine/
 
 1. **Camera.** The AMB82-Mini streams video over the network (RTSP). A USB or laptop camera works too. `camera.py` opens either one and gives the program one picture (frame) at a time.
 2. **Tray.** `tray.py` finds the black tray in the picture, keeps its outline steady, locks it, and straightens it into a top-down view.
-3. **Caps.** `caps.py` darkens the picture if the tray is too bright, finds red, blue and purple caps, and keeps their boxes steady.
-4. **Output.** `tray_object_pipeline.py` shows four windows and prints each cap's color and position as a fraction of the tray (`u` across, `v` down, 0 to 1). It does not give robot millimeters yet. See [Pipeline limits](docs/limitation.md).
+3. **Caps.** `caps.py` finds red, blue and purple caps, and keeps their boxes steady.
+4. **Output.** `tray_object_pipeline.py` shows six windows and prints each cap's color and position as a fraction of the tray (`u` across, `v` down, 0 to 1). It does not give robot millimeters yet. See [Pipeline limits](docs/limitation.md).
 
 ```text
 camera  ->  camera.py  ->  tray.py  ->  caps.py  ->  tray_object_pipeline.py
@@ -79,7 +79,6 @@ The pipeline looks for a black tray. It waits 1.25 seconds after first finding i
 
 - **Tray lock:** once the outline stays still for 0.75 seconds, it locks (cyan, `TRAY LOCKED`). A hand or glare can't move it. Press `r` in a window to find the tray again. The tray unlocks by itself if the tray really moves.
 - **Steady caps:** a cap shows only after it is seen in 3 of the last 5 frames. A new or removed cap appears or disappears about 3 frames late.
-- **Bright tray:** if the camera makes the tray too bright, the picture is darkened first (`--tray-target-brightness`, 0 = off).
 
 USB Camera:
 

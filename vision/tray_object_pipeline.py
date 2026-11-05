@@ -1,8 +1,8 @@
 """Find the black tray in a camera picture and the colored caps on it.
 
 Runs on the PC: camera frame -> find the tray -> steady and lock its outline ->
-straighten it -> darken if too bright -> find red, blue and purple caps ->
-steady the boxes -> report each cap's color and position as a fraction of the
+straighten it -> find red, blue and purple caps -> steady the
+boxes -> report each cap's color and position as a fraction of the
 tray (u across, v down, 0-1).
 
 The steps live in three files next to this one:
@@ -28,8 +28,7 @@ try:
         straighten_tray, tray_moved,
     )
     from .caps import (  # noqa: F401  (re-exported so old imports keep working)
-        DEFAULT_TARGET_TRAY_BRIGHTNESS, ObjectTracker, find_objects,
-        make_color_masks, min_cap_brightness, scale_tray_brightness,
+        ObjectTracker, find_objects, make_color_masks, min_cap_brightness,
     )
 except ImportError:
     from camera import open_capture
@@ -38,8 +37,7 @@ except ImportError:
         straighten_tray, tray_moved,
     )
     from caps import (  # noqa: F401
-        DEFAULT_TARGET_TRAY_BRIGHTNESS, ObjectTracker, find_objects,
-        make_color_masks, min_cap_brightness, scale_tray_brightness,
+        ObjectTracker, find_objects, make_color_masks, min_cap_brightness,
     )
 
 import cv2  # noqa: E402
@@ -47,7 +45,7 @@ import numpy as np  # noqa: E402
 
 
 def arrange_preview_windows():
-    """Place the four debug windows in a two-column grid on the main screen.
+    """Place the six debug windows in a two-column grid on the main screen.
 
     Uses the Windows screen size when available, otherwise assumes
     1280 x 720.
@@ -55,6 +53,8 @@ def arrange_preview_windows():
     names = (
         "Camera / tray localization",
         "Tray threshold",
+        "Tray mask",
+        "Image restricted to tray",
         "Rectified tray / detected objects",
         "Colored-object mask",
     )
@@ -68,7 +68,7 @@ def arrange_preview_windows():
     cell_width = max(320, (screen_width - 30) // 2)
     # Leave room for Windows title bars and display scaling so the bottom row
     # stays on screen.
-    cell_height = max(220, (screen_height - 120) // 2)
+    cell_height = max(220, (screen_height - 160) // 3)
     for index, name in enumerate(names):
         row, column = divmod(index, 2)
         cv2.namedWindow(name, cv2.WINDOW_NORMAL)
@@ -87,6 +87,10 @@ class FrameResult:
         overview: Camera image with the tray outline and status text drawn on it.
         dark_pixel_mask: Black-and-white tray threshold from find_tray_corners().
         tray_found: True if a tray outline was used for this frame.
+        tray_mask: Black-and-white picture, white inside the tray outline, or
+            None when there is no tray.
+        tray_only: Camera image with everything outside the tray outline
+            blacked out, or None when there is no tray.
         detection_view: Straightened tray with boxes and labels drawn on it, or
             None when there is no tray.
         color_mask: All color masks in one black-and-white image (white = a cap
@@ -96,14 +100,16 @@ class FrameResult:
             there is no tray.
     """
 
-    def __init__(self, overview, dark_pixel_mask, tray_found=False,
-                 detection_view=None, color_mask=None, objects=None):
+    def __init__(self, overview, dark_pixel_mask, tray_found=False, tray_mask=None,
+                 tray_only=None, detection_view=None, color_mask=None, objects=None):
         """Store the pictures and caps of one frame.
 
         Args:
             overview: Camera image with outline and status text drawn on it.
             dark_pixel_mask: Black-and-white tray threshold.
             tray_found: True if a tray outline was used.
+            tray_mask: White inside the tray outline, or None.
+            tray_only: Camera image outside the tray blacked out, or None.
             detection_view: Straightened tray with boxes drawn, or None.
             color_mask: Combined color mask, or None.
             objects: Steady caps, or None for no caps.
@@ -111,6 +117,8 @@ class FrameResult:
         self.overview = overview
         self.dark_pixel_mask = dark_pixel_mask
         self.tray_found = tray_found
+        self.tray_mask = tray_mask
+        self.tray_only = tray_only
         self.detection_view = detection_view
         self.color_mask = color_mask
         self.objects = objects if objects is not None else []
@@ -225,16 +233,16 @@ class TrayCapPipeline:
             overview, status, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, outline_color, 2,
         )
 
+        tray_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+        cv2.fillConvexPoly(tray_mask, tray_corners.astype(np.int32), 255)
+        tray_only = cv2.bitwise_and(frame, frame, mask=tray_mask)
+
         straight_tray, _ = straighten_tray(frame, tray_corners)
-        # Darken the picture if the camera made the tray too bright.
-        scaled_tray, brightness_gain = scale_tray_brightness(
-            straight_tray, args.tray_target_brightness
-        )
         masks, tray_brightness, cap_min_brightness = make_color_masks(
-            scaled_tray, args.object_min_saturation, args.object_min_value
+            straight_tray, args.object_min_saturation, args.object_min_value
         )
         detections = find_objects(
-            scaled_tray, masks, args.object_min_area_ratio, args.object_max_aspect
+            straight_tray, masks, args.object_min_area_ratio, args.object_max_aspect
         )
         # Boxes, centers and the printout use the steady objects.
         objects = self.object_tracker.update(detections)
@@ -243,8 +251,8 @@ class TrayCapPipeline:
         # Show the brightness numbers, to debug false colors on the tray.
         cv2.putText(
             detection_view,
-            "tray brightness {} (x{:.2f})  cap needs > {}".format(
-                tray_brightness, brightness_gain, cap_min_brightness
+            "tray brightness {}  cap needs > {}".format(
+                tray_brightness, cap_min_brightness
             ),
             (8, detection_view.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
             (255, 255, 255), 1,
@@ -258,22 +266,29 @@ class TrayCapPipeline:
                 detection_view, obj["color"], (x, max(20, y - 6)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
             )
-        color_mask = np.zeros(scaled_tray.shape[:2], dtype=np.uint8)
+        color_mask = np.zeros(straight_tray.shape[:2], dtype=np.uint8)
         for mask in masks.values():
             color_mask = cv2.bitwise_or(color_mask, mask)
-        return FrameResult(overview, dark_pixel_mask, True, detection_view, color_mask, objects)
+        return FrameResult(overview, dark_pixel_mask, True, tray_mask, tray_only,
+                           detection_view, color_mask, objects)
 
 
 def show_results(frame, result):
-    """Show a FrameResult in the four preview windows.
+    """Show a FrameResult in the six preview windows.
 
-    Without a tray, the two tray windows are cleared so they don't keep
+    Without a tray, the tray windows are cleared so they don't keep
     showing an old frame.
 
     Args:
         frame: Camera image, BGR; only its size is used for the blank views.
         result: FrameResult from TrayCapPipeline.process_frame().
     """
+    tray_mask = result.tray_mask
+    if tray_mask is None:
+        tray_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+    tray_only = result.tray_only
+    if tray_only is None:
+        tray_only = np.zeros_like(frame)
     detection_view = result.detection_view
     if detection_view is None:
         detection_view = np.zeros_like(frame)
@@ -282,6 +297,8 @@ def show_results(frame, result):
         color_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
     cv2.imshow("Camera / tray localization", result.overview)
     cv2.imshow("Tray threshold", result.dark_pixel_mask)
+    cv2.imshow("Tray mask", tray_mask)
+    cv2.imshow("Image restricted to tray", tray_only)
     cv2.imshow("Rectified tray / detected objects", detection_view)
     cv2.imshow("Colored-object mask", color_mask)
 
@@ -319,10 +336,6 @@ def parse_args(argv=None):
                         help="Lowest saturation for purple (red and blue have their own)")
     parser.add_argument("--object-min-value", type=int, default=45,
                         help="Lowest brightness for any cap pixel (0-255)")
-    parser.add_argument("--tray-target-brightness", type=int,
-                        default=DEFAULT_TARGET_TRAY_BRIGHTNESS,
-                        help="Darken a too-bright tray to this brightness (0-255) "
-                             "before finding caps; 0 turns it off")
     parser.add_argument("--object-min-area-ratio", type=float, default=0.0005,
                         help="Smallest cap, as a fraction of the tray image area")
     parser.add_argument("--object-max-aspect", type=float, default=1.9,
