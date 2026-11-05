@@ -328,7 +328,7 @@ def parse_args(argv=None):
                         help="Brightest brightness counted as tray (0-255)")
     parser.add_argument("--tray-min-area-ratio", type=float, default=0.04,
                         help="Smallest tray, as a fraction of the frame area")
-    parser.add_argument("--tray-settle-seconds", type=float, default=1.25,
+    parser.add_argument("--tray-settle-seconds", type=float, default=0.5,
                         help="Wait after first tray detection before confirming it")
     parser.add_argument("--close-kernel", type=int, default=9,
                         help="Size in pixels used to fill small gaps in the tray mask")

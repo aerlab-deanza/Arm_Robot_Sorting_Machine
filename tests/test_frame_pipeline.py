@@ -39,8 +39,8 @@ def run(img, seconds, step=0.1):
 def test_tray_is_found_after_the_first_sighting_wait():
     img = picture()
     pipeline = TrayCapPipeline(parse_args([]))
-    assert not pipeline.process_frame(img, 0.0).tray_found      # waiting 1.25 s
-    assert pipeline.process_frame(img, 1.3).tray_found
+    assert not pipeline.process_frame(img, 0.0).tray_found      # waiting 0.5 s
+    assert pipeline.process_frame(img, 0.6).tray_found
 
 
 def test_red_and_blue_caps_are_found():

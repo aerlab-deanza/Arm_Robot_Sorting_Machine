@@ -89,9 +89,9 @@ If the program says “TRAY NOT FOUND,” check the threshold and outline before
 
 **Why:** Lighting and camera noise make corners jump around.
 
-![Exponential moving average, jump confirmation, and the 1.25-second countdown](images/pipeline/04-steady.gif)
+![Exponential moving average, jump confirmation, and the 0.5-second countdown](images/pipeline/04-steady.gif)
 
-First detection starts a 1.25-second countdown ("LOCALIZE TRAY" on screen). Keep your hand out of the tray. The program uses the latest detection after the countdown, then smooths corner changes. This timer does not detect hands.
+First detection starts a 0.5-second countdown ("LOCALIZE TRAY" on screen). Keep your hand out of the tray. The program uses the latest detection after the countdown, then smooths corner changes. This timer does not detect hands.
 
 The tracker keeps the last outline through up to 8 missed frames. Large jumps need 3 similar detections.
 

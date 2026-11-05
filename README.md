@@ -75,7 +75,7 @@ python -m pip install -r requirements.txt
 
 Run tray and object detection with camera
 
-The pipeline looks for a black tray. It waits 1.25 seconds after first finding it, so keep your hand out of the tray during this time.
+The pipeline looks for a black tray. It waits 0.5 seconds after first finding it, so keep your hand out of the tray during this time.
 
 - **Tray lock:** once the outline stays still for 0.75 seconds, it locks (cyan, `TRAY LOCKED`). A hand or glare can't move it. Press `r` in a window to find the tray again. The tray unlocks by itself if the tray really moves.
 - **Steady caps:** a cap shows only after it is seen in 3 of the last 5 frames. A new or removed cap appears or disappears about 3 frames late.

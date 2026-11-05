@@ -160,8 +160,8 @@ class SteadyScene(FastScene):
         # 1. The settle timer.
         bar_back = Rectangle(width=6.0, height=0.35, stroke_color=GREY, stroke_width=2).move_to([0, 0.6, 0])
         bar = Rectangle(width=6.0, height=0.35, stroke_width=0).set_fill(YELLOW, 1).move_to(bar_back)
-        timer = label("LOCALIZE TRAY - 1.25 s", 30, YELLOW).next_to(bar_back, UP, buff=0.3)
-        self.say("First sighting: wait **1.25 s** before trusting it",
+        timer = label("LOCALIZE TRAY - 0.5 s", 30, YELLOW).next_to(bar_back, UP, buff=0.3)
+        self.say("First sighting: wait **0.5 s** before trusting it",
                  FadeIn(bar_back), FadeIn(bar), FadeIn(timer), run_time=0.8, hold=0.1)
         self.play(bar.animate.stretch_to_fit_width(0.01).align_to(bar_back, LEFT), run_time=1.6)
         self.say("A timer, **not** a hand detector",

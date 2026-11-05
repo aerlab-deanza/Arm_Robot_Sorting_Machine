@@ -76,7 +76,7 @@ For the working steps, see [current pipeline](computer_vision_pipeline.md). For 
 ![Current outline follows the black tray border](images/black-tray-localization.png)
 
 - **Jitter:** New corner estimates moved between frames. We blend them with previous corners and reject sudden jumps until repeated.
-- **Hands:** We added a short wait after first finding the tray (now 1.25 seconds, shown as "LOCALIZE TRAY"). Gives time to move hands away. Uses the latest detection afterward.
+- **Hands:** We added a short wait after first finding the tray (now 0.5 seconds, shown as "LOCALIZE TRAY"). Gives time to move hands away. Uses the latest detection afterward.
 - **Padding trial:** We extended the mask around the sides and far edge to keep tall objects visible.
 - **Current decision:** Removed that extension. Mask and green outline follow the tracked tray corners.
 - **Tradeoff:** Tall objects near an edge can still be cropped. The timer does not check whether hands are gone.
