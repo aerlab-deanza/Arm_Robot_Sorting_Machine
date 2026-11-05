@@ -53,7 +53,6 @@ Arm_Robot_Sorting_Machine/
 
 ```text
 camera  ->  camera.py  ->  tray.py  ->  caps.py  ->  tray_object_pipeline.py
-                                  frame        tray outline   caps        windows + printout
 ```
 
 ### Important files
