@@ -92,3 +92,8 @@ Laptop Camera:
 python vision/tray_object_pipeline.py --camera-index 1
 ```
 
+No windows (for the robot PC). It prints one JSON line per frame with the tray state and the caps' positions. Stop with Ctrl+C:
+```powershell
+python vision/tray_object_pipeline.py --camera-index 0 --no-gui
+```
+

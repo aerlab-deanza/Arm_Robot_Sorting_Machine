@@ -9,13 +9,17 @@ The steps live in three files next to this one:
     camera.py - open a USB camera or a network stream.
     tray.py   - find, steady, lock and straighten the tray.
     caps.py   - find caps by color, and steady their boxes.
-This file shows the live windows and prints the results.
+This file shows the live windows and prints the results. With --no-gui it opens
+no windows and prints one JSON line per frame instead.
 
 Example:
     python vision/tray_object_pipeline.py --camera-index 0
+    python vision/tray_object_pipeline.py --camera-index 0 --no-gui
 """
 
 import argparse
+import json
+import sys
 import time
 
 # Works both as a script (python vision/tray_object_pipeline.py) and when
@@ -87,6 +91,8 @@ class FrameResult:
         overview: Camera image with the tray outline and status text drawn on it.
         dark_pixel_mask: Black-and-white tray threshold from find_tray_corners().
         tray_found: True if a tray outline was used for this frame.
+        tray_state: "settling" (first-sighting wait), "not_found", "finding"
+            (outline found, not locked yet) or "locked".
         tray_mask: Black-and-white picture, white inside the tray outline, or
             None when there is no tray.
         tray_only: Camera image with everything outside the tray outline
@@ -101,7 +107,8 @@ class FrameResult:
     """
 
     def __init__(self, overview, dark_pixel_mask, tray_found=False, tray_mask=None,
-                 tray_only=None, detection_view=None, color_mask=None, objects=None):
+                 tray_only=None, detection_view=None, color_mask=None, objects=None,
+                 tray_state="not_found"):
         """Store the pictures and caps of one frame.
 
         Args:
@@ -113,10 +120,12 @@ class FrameResult:
             detection_view: Straightened tray with boxes drawn, or None.
             color_mask: Combined color mask, or None.
             objects: Steady caps, or None for no caps.
+            tray_state: "settling", "not_found", "finding" or "locked".
         """
         self.overview = overview
         self.dark_pixel_mask = dark_pixel_mask
         self.tray_found = tray_found
+        self.tray_state = tray_state
         self.tray_mask = tray_mask
         self.tray_only = tray_only
         self.detection_view = detection_view
@@ -137,6 +146,8 @@ class TrayCapPipeline:
         tray_lock: TrayLock that freezes the outline once it is steady.
         object_tracker: ObjectTracker that steadies the cap boxes.
         settle_until: Time (seconds) when the first-sighting wait ends, or None.
+        last_tray_check: Time (seconds) of the last tray search, or None.
+        last_dark_pixel_mask: Tray threshold from the last tray search.
     """
 
     def __init__(self, args):
@@ -150,6 +161,8 @@ class TrayCapPipeline:
         self.tray_lock = TrayLock()
         self.object_tracker = ObjectTracker()
         self.settle_until = None
+        self.last_tray_check = None
+        self.last_dark_pixel_mask = None
 
     def reset_tray(self):
         """Forget the locked outline and search for the tray again."""
@@ -169,15 +182,27 @@ class TrayCapPipeline:
             A FrameResult with the pictures to show and the steady caps.
         """
         args = self.args
-        detected_corners, dark_pixel_mask = find_tray_corners(
-            frame,
-            0, 179,  # any hue: black has no stable hue
-            0, 0,    # no lower limit on saturation or brightness
-            args.tray_max_saturation,
-            args.tray_max_value,
-            args.tray_min_area_ratio,
-            args.close_kernel,
+        # While the outline is locked, look for the tray only every
+        # locked_check_seconds. That is enough to notice a moved tray.
+        search_tray = (
+            not self.tray_lock.locked or self.last_tray_check is None or
+            now - self.last_tray_check >= args.locked_check_seconds
         )
+        if search_tray:
+            detected_corners, dark_pixel_mask = find_tray_corners(
+                frame,
+                0, 179,  # any hue: black has no stable hue
+                0, 0,    # no lower limit on saturation or brightness
+                args.tray_max_saturation,
+                args.tray_max_value,
+                args.tray_min_area_ratio,
+                args.close_kernel,
+            )
+            self.last_tray_check = now
+            self.last_dark_pixel_mask = dark_pixel_mask
+        else:
+            detected_corners = None
+            dark_pixel_mask = self.last_dark_pixel_mask
         overview = frame.copy()
 
         # First sighting: wait a moment before trusting the tray.
@@ -202,10 +227,12 @@ class TrayCapPipeline:
                     overview, "LOCALIZE TRAY - {:.2f}s".format(remaining),
                     (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2,
                 )
-                return FrameResult(overview, dark_pixel_mask)
+                return FrameResult(overview, dark_pixel_mask, tray_state="settling")
             self.settle_until = None
 
-        smoothed_corners = self.tray_smoother.update(detected_corners, frame.shape)
+        smoothed_corners = None
+        if search_tray:
+            smoothed_corners = self.tray_smoother.update(detected_corners, frame.shape)
         # Once steady for lock_seconds the outline locks, so glare can't move it.
         tray_corners, moved_corners = self.tray_lock.update(
             smoothed_corners, detected_corners, frame.shape, now
@@ -220,7 +247,7 @@ class TrayCapPipeline:
                 overview, "TRAY NOT FOUND", (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2,
             )
-            return FrameResult(overview, dark_pixel_mask)
+            return FrameResult(overview, dark_pixel_mask, tray_state="not_found")
 
         outline_color = (255, 255, 0) if self.tray_lock.locked else (0, 255, 0)
         cv2.polylines(overview, [tray_corners.astype(np.int32)], True, outline_color, 3)
@@ -262,15 +289,20 @@ class TrayCapPipeline:
             cv2.rectangle(detection_view, (x, y), (x + box_w, y + box_h), (0, 255, 0), 2)
             cv2.circle(detection_view, (int(obj["center_x"]), int(obj["center_y"])),
                        5, (255, 0, 0), -1)
+            # The label follows the cap, so it shows the live position (u, v).
+            text = "{} ({:.2f}, {:.2f})".format(obj["color"], obj["u"], obj["v"])
+            (text_width, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            text_x = max(0, min(x, detection_view.shape[1] - text_width - 4))
             cv2.putText(
-                detection_view, obj["color"], (x, max(20, y - 6)),
+                detection_view, text, (text_x, max(20, y - 6)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
             )
         color_mask = np.zeros(straight_tray.shape[:2], dtype=np.uint8)
         for mask in masks.values():
             color_mask = cv2.bitwise_or(color_mask, mask)
         return FrameResult(overview, dark_pixel_mask, True, tray_mask, tray_only,
-                           detection_view, color_mask, objects)
+                           detection_view, color_mask, objects,
+                           tray_state="locked" if self.tray_lock.locked else "finding")
 
 
 def show_results(frame, result):
@@ -303,6 +335,40 @@ def show_results(frame, result):
     cv2.imshow("Colored-object mask", color_mask)
 
 
+def result_to_json(frame_number, time_ms, result):
+    """Turn a FrameResult into one line of JSON, for programs to read.
+
+    Args:
+        frame_number: Number of this frame since the program started.
+        time_ms: Time of the frame, in milliseconds since 1970.
+        result: FrameResult from TrayCapPipeline.process_frame().
+
+    Returns:
+        A JSON text line (no newline) like
+        ``{"frame": 12, "time_ms": 1730000000000, "tray": "locked",
+        "caps": [{"color": "red", "u": 0.412, "v": 0.688, "center_x": 206.0,
+        "center_y": 151.4, "box": [190, 135, 32, 33], "area": 780}]}``.
+    """
+    caps = [
+        {
+            "color": obj["color"],
+            "u": round(obj["u"], 3),
+            "v": round(obj["v"], 3),
+            "center_x": round(obj["center_x"], 1),
+            "center_y": round(obj["center_y"], 1),
+            "box": [int(value) for value in obj["box"]],
+            "area": int(round(obj["area"])),
+        }
+        for obj in result.objects
+    ]
+    return json.dumps({
+        "frame": frame_number,
+        "time_ms": time_ms,
+        "tray": result.tray_state,
+        "caps": caps,
+    })
+
+
 def parse_args(argv=None):
     """Read the command-line flags.
 
@@ -332,6 +398,12 @@ def parse_args(argv=None):
                         help="Wait after first tray detection before confirming it")
     parser.add_argument("--close-kernel", type=int, default=9,
                         help="Size in pixels used to fill small gaps in the tray mask")
+    parser.add_argument("--locked-check-seconds", type=float, default=0.2,
+                        help="While the tray is locked, look for it only this often "
+                             "(seconds). Saves time; still notices a moved tray")
+    parser.add_argument("--no-gui", action="store_true",
+                        help="Open no windows. Print one JSON line per frame to "
+                             "stdout (messages go to stderr). Stop with Ctrl+C")
     parser.add_argument("--object-min-saturation", type=int, default=70,
                         help="Lowest saturation for purple (red and blue have their own)")
     parser.add_argument("--object-min-value", type=int, default=45,
@@ -350,17 +422,29 @@ def main():
     outline and finds the tray again. Once per second, the steady objects
     are printed with their color and tray position.
 
+    With ``--no-gui`` no windows open. Each frame prints one JSON line (see
+    result_to_json) to stdout, and every other message goes to stderr, so
+    another program can read stdout. Stop with Ctrl+C.
+
     Raises:
         SystemExit: If the video can't be opened or frames stop arriving.
     """
     args = parse_args()
+    json_out = None
+    if args.no_gui:
+        json_out = sys.stdout
+        sys.stdout = sys.stderr   # all other messages go to stderr
     source = args.camera_index if args.camera_index is not None else args.url
     video = open_capture(source, args.transport)
-    print("Reading {}. Press q in a preview window to quit.".format(source))
-    arrange_preview_windows()
+    print("Reading {}. {}".format(
+        source, "Press Ctrl+C to quit." if args.no_gui else "Press q in a preview window to quit."
+    ))
+    if not args.no_gui:
+        arrange_preview_windows()
     pipeline = TrayCapPipeline(args)
     last_report = 0.0
     failures = 0
+    frame_number = 0
 
     try:
         while True:
@@ -374,10 +458,16 @@ def main():
                 continue
             failures = 0
 
+            frame_number += 1
             now = time.monotonic()
             result = pipeline.process_frame(frame, now)
-            show_results(frame, result)
 
+            if args.no_gui:
+                json_out.write(result_to_json(frame_number, int(time.time() * 1000), result) + "\n")
+                json_out.flush()
+                continue
+
+            show_results(frame, result)
             if result.tray_found and now - last_report >= 1.0:
                 print("Objects detected: {}".format(len(result.objects)))
                 for obj in result.objects:
@@ -394,9 +484,14 @@ def main():
             if key == ord("r"):
                 pipeline.reset_tray()
                 print("Re-finding the tray (r pressed).", flush=True)
+    except KeyboardInterrupt:
+        pass   # Ctrl+C is the normal way to stop with --no-gui
     finally:
         video.release()
-        cv2.destroyAllWindows()
+        if args.no_gui:
+            sys.stdout = json_out
+        else:
+            cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

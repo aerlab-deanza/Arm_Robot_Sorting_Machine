@@ -183,7 +183,7 @@ Steady boxes: the tracker shows a cap only after it is seen in 3 of the last 5 f
 
 ![Each frame is detected from scratch; the tracker keeps the box steady and ignores a one-frame speck](images/pipeline/07d-steady-boxes.gif)
 
-The green boxes mark objects (after tracking). Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
+The green boxes mark objects (after tracking). Each label shows the cap's color and its position `(u, v)`, and it follows the cap when the cap moves. Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
 
 The combined color mask selects the objects as white. The tray stays black.
 

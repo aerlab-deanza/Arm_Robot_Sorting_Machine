@@ -3,7 +3,7 @@
 Why we use the current setup. Images from our earlier trials and current run.
 
 For the working steps, see [current pipeline](computer_vision_pipeline.md). For run commands, see [README](../README.md#commands).
-
+on a rea
 ## 1. Black tray: reduce shadow interference
 
 | Earlier: white tray | Current: black tray |
