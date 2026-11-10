@@ -86,7 +86,7 @@ def arrange_preview_windows():
 
 class FrameResult:
     """What one camera frame produced, ready to show on screen.
-
+d
     Attributes:
         overview: Camera image with the tray outline and status text drawn on it.
         dark_pixel_mask: Black-and-white tray threshold from find_tray_corners().

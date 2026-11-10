@@ -14,14 +14,13 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 | 4 | Positions changed with the camera angle | Straighten the tray picture | Done |
 | 5 | One ball got many boxes | Keep only the biggest of overlapping boxes | Done |
 | 6 | The outline shook, and hands got in the way at the start | Smooth the corners, wait a moment at the start | Done |
-| 7 | The camera did not always open | Try several ways to open it | Done |
-| 8 | Glare moved the outline | Lock the outline once it is still | Done, see the limit |
-| 9 | Boxes flickered | Show a cap only after it is seen a few times | Done |
-| 10 | A hand was found as a red cap | Red must be strongly colored | Done |
-| 11 | The tray wasn't found next to a white board | Ignore color for the tray, add a search box | Done, not tried live |
-| 12 | A red cap was labeled purple | Strong colors in that shade count as red | Done, not tried live |
-| 13 | Glare was found as a blue cap | Caps must be much brighter than the tray | Done, not tried live |
-| 14 | Labels were too big and blurry | Size labels to their box, draw on a bigger picture | Done |
+| 7 | Glare moved the outline | Lock the outline once it is still | Done, see the limit |
+| 8 | Boxes flickered | Show a cap only after it is seen a few times | Done |
+| 9 | A hand was found as a red cap | Red must be strongly colored | Done |
+| 10 | The tray wasn't found next to a white board | Ignore color for the tray, add a search box | Done, not tried live |
+| 11 | A red cap was labeled purple | Strong colors in that shade count as red | Done, not tried live |
+| 12 | Glare was found as a blue cap | Caps must be much brighter than the tray | Done, not tried live |
+| 13 | Labels were too big and blurry | Size labels to their box, draw on a bigger picture | Done |
 
 ## Words used on this page
 
@@ -74,7 +73,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 <details><summary>Details</summary>
 
 - The allowed long side / short side ratio went from 5.5 to 8.
-- The tray is found by brightness only. Color shade and colorfulness are ignored (see section 11).
+- The tray is found by brightness only. Color shade and colorfulness are ignored (see section 10).
 
 </details>
 
@@ -151,28 +150,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 </details>
 
-## 7. The camera did not always open
-
-![The six preview windows, one for each step](images/findings/07-six-windows.png)
-
-**What we saw:** Sometimes the camera window stayed black, showed the wrong camera, or timed out.
-
-**Why:** Windows has several ways to open a USB camera, and some give black pictures at first. A network camera can have an address and still send no video.
-
-**What we changed:** The program tries each way to open a USB camera and skips the ones that give black pictures. For the network camera it tries two connection types. Six windows, one per step, show what each step sees.
-
-**Still not perfect:** Camera numbers differ between computers. On our setup: 0 = USB camera, 1 = laptop camera.
-
-<details><summary>Details</summary>
-
-- USB: DirectShow, then Media Foundation, then the default.
-- Network camera (RTSP): TCP first, then UDP. A VLC relay worked as a fallback but did not fix every timeout.
-- Camera 2 was once an OBS virtual camera, not a real one.
-- The black-and-white tray picture is updated in every frame, so it never looks frozen.
-
-</details>
-
-## 8. Glare moved the outline
+## 7. Glare moved the outline
 
 <img src="images/pipeline/04b-lock.gif" width="600" alt="Once still, the outline locks; glare and a hand can't move it">
 
@@ -192,7 +170,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 </details>
 
-## 9. Boxes flickered
+## 8. Boxes flickered
 
 <img src="images/pipeline/07d-steady-boxes.gif" width="600" alt="A cap is shown once it is seen in 3 of the last 5 frames">
 
@@ -210,7 +188,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 </details>
 
-## 10. A hand was found as a red cap
+## 9. A hand was found as a red cap
 
 **Before:** two red boxes on the hand (right).
 
@@ -234,7 +212,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 </details>
 
-## 11. The tray wasn't found next to a white board
+## 10. The tray wasn't found next to a white board
 
 **Before:** "TRAY NOT FOUND". The black-and-white tray picture (right) is full of holes and joined to the floor.
 
@@ -266,7 +244,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 </details>
 
-## 12. A red cap was labeled purple
+## 11. A red cap was labeled purple
 
 **Before:** the red cap is labeled purple.
 
@@ -292,9 +270,15 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 </details>
 
-## 13. Glare was found as a blue cap
+## 12. Glare was found as a blue cap
 
-The "before" picture of section 12 shows it too: the white patch in the top-right of the cap picture is glare.
+**Before:** the glare (yellow ring) shows up in the cap picture. Bottom left: a cap had to be brighter than 86.
+
+![Before: glare in the top-right corner of the cap picture](images/findings/12-glare-before.png)
+
+**After:** the same corner is empty. A cap now has to be brighter than 106.
+
+![After: no glare in the cap picture](images/findings/12-glare-after.png)
 
 **What we saw:** Glare in a corner of the tray was found as a blue cap.
 
@@ -317,7 +301,7 @@ The "before" picture of section 12 shows it too: the white patch in the top-righ
 
 </details>
 
-## 14. Labels were too big and blurry
+## 13. Labels were too big and blurry
 
 **Before:** text too big for a small picture.
 
@@ -344,9 +328,9 @@ The "before" picture of section 12 shows it too: the white patch in the top-righ
 
 </details>
 
-**About the "after" pictures** in sections 10, 12 and 14: they are today's code run on the same screenshots. The old boxes and text were painted out first, and each picture was squeezed back to its real shape (the preview window had stretched it sideways).
+**About the "after" pictures** in sections 9, 11, 12 and 13: they are today's code run on the same screenshots. The old boxes and text were painted out first, and each picture was squeezed back to its real shape (the preview window had stretched it sideways).
 
-## 15. Why this approach, and what is left
+## 14. Why this approach, and what is left
 
 **Why simple color rules:** they find our brightly colored caps without collecting and labeling hundreds of training pictures.
 
