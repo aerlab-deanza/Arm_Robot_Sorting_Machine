@@ -102,7 +102,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 **What we changed:** We stretch the four corners into a rectangle, as if the camera looked straight down. Positions are then fractions of the tray: `u` across, `v` down, 0 to 1.
 
-**Still not perfect:** This is exact only for things lying on the tray. A cap on a tube is shifted ([limit 3](limitation.md#3-a-cap-above-the-tray-is-measured-in-the-wrong-place)).
+**Still not perfect:** This is exact only for things lying on the tray. Things above the tray, like a cap on a tube, come out a little too far toward the edges.
 
 <details><summary>Details</summary>
 
@@ -180,7 +180,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 **What we changed:** Once the outline has been still for a moment, it **locks** (turns cyan, "TRAY LOCKED"). After that, glare and hands can't move it. It unlocks only if the whole tray really moves, or when you press `r`.
 
-**Still not perfect:** The lock keeps whatever outline it locks, even a wrong one. Here a cable behind the tray made the outline too big, and the lock kept it. Press `r` to find the tray again. The real fix is [Task 1](task_delegation.md#task-1-keep-the-trays-four-main-corners).
+**Still not perfect:** The lock keeps whatever outline it locks, even a wrong one. Here a cable behind the tray made the outline too big, and the lock kept it. Press `r` to find the tray again. The real fix is [Task 1](task_delegation.md#task-1-make-the-tray-outline-ignore-cables).
 
 ![A cable made the outline too big, and the lock kept it](images/findings/08-wrong-lock.png)
 
@@ -282,7 +282,7 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 **What we changed:** In the overlapping shades, a strongly colored pixel counts as red. Our purple cap is paler, so it stays purple.
 
-**Still not perfect:** The purple cap was measured in other light, so the gap between them is small. Measuring the caps in the real light ([Task 2](task_delegation.md#task-2-calibrate-the-cap-colors)) is the real fix.
+**Still not perfect:** The purple cap was measured in other light, so the gap between them is small. Measuring the caps in the real light ([Task 2](task_delegation.md#task-2-measure-the-cap-colors)) is the real fix.
 
 <details><summary>Details</summary>
 
@@ -352,7 +352,7 @@ The "before" picture of section 12 shows it too: the white patch in the top-righ
 
 **What we get today:** each cap's color, and where it is as a fraction of the tray. No robot coordinates yet.
 
-**Before the robot can pick:** the hardware team turns tray positions into arm positions. The open problems of the camera program are in [pipeline limits](limitation.md).
+**Before the robot can pick:** the hardware team turns tray positions into arm positions. The open problems of the camera program are in [what is left to do](task_delegation.md).
 
 **Separate path:** the AMB82-Mini camera board also has its own ready-made object detector. Our Python program does not use it.
 

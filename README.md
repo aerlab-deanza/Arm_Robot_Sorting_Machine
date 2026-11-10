@@ -23,8 +23,7 @@ The whole pipeline in about 50 seconds:
 
 - [Current pipeline](docs/computer_vision_pipeline.md) - Steps, algorithms, and current output.
 - [Findings and setup decisions](docs/documentation.md) - Image comparisons showing why we chose this setup.
-- [Pipeline limits](docs/limitation.md) - Current limits and work needed before automatic picking.
-- [Task Delegation](docs/task_delegation.md) - The 5 team tasks: what to build, fake data, tests, how to push.
+- [What is left to do](docs/task_delegation.md) - The 3 open tasks: goal, steps, how to check you're done, and code help.
 
 ### Folder map
 
@@ -36,7 +35,7 @@ Arm_Robot_Sorting_Machine/
 |   +-- <a href="vision/tray.py">tray.py</a>                    Finds, steadies, locks and straightens the tray
 |   +-- <a href="vision/caps.py">caps.py</a>                    Finds caps by color and steadies their boxes
 +-- <a href="firmware/TrayObjectDetection/">firmware/TrayObjectDetection/</a>  Sketch for the AMB82-Mini camera board (Arduino)
-+-- <a href="docs/">docs/</a>                          Guides, findings, limits and the team tasks
++-- <a href="docs/">docs/</a>                          Guides, findings and the open tasks
 |   +-- <a href="docs/images/">images/</a>                    Screenshots and GIFs used by the guides
 |   +-- <a href="docs/animations/">animations/</a>                Scripts that make the GIFs (Manim)
 +-- <a href="requirements.txt">requirements.txt</a>               Python packages for the vision code
@@ -49,7 +48,7 @@ Arm_Robot_Sorting_Machine/
 1. **Camera.** The AMB82-Mini streams video over the network (RTSP). A USB or laptop camera works too. `camera.py` opens either one and gives the program one picture (frame) at a time.
 2. **Tray.** `tray.py` finds the black tray in the picture, keeps its outline steady, locks it, and straightens it into a top-down view.
 3. **Caps.** `caps.py` finds red, blue and purple caps, and keeps their boxes steady.
-4. **Output.** `tray_object_pipeline.py` shows six windows and prints one JSON line per second with each cap's color and position as a fraction of the tray (`u` across, `v` down, 0 to 1). The "Rectified tray / detected objects" window also shows how many caps were found. It does not give robot millimeters yet. See [Pipeline limits](docs/limitation.md).
+4. **Output.** `tray_object_pipeline.py` shows six windows and prints one JSON line per second with each cap's color and position as a fraction of the tray (`u` across, `v` down, 0 to 1). The "Rectified tray / detected objects" window also shows how many caps were found. It does not give robot millimeters yet. See [what is left to do](docs/task_delegation.md).
 
 ```text
 camera  ->  camera.py  ->  tray.py  ->  caps.py  ->  tray_object_pipeline.py

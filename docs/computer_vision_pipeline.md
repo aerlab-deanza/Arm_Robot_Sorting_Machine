@@ -196,7 +196,7 @@ The combined color mask selects the objects as white. The tray stays black.
 
 ![Divide by the image width and height to get positions from 0 to 1](images/pipeline/08-normalized.gif)
 
-Values describe the tray image, not robot coordinates in millimeters. They are exact for things lying on the tray surface. A cap on a tube is above the surface, so it is shifted, more towards the edges ([limit 3](limitation.md#3-a-cap-above-the-tray-is-measured-in-the-wrong-place)). No height, grip angle, or arm commands yet.
+Values describe the tray image, not robot coordinates in millimeters. They are exact for things lying on the tray surface. Things above the tray, like a cap on a tube, come out a little too far toward the edges.
 
 ## Recap and next steps
 

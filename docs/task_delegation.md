@@ -1,140 +1,36 @@
-# Task Delegation
+## Task 1: Make the tray outline ignore cables
 
-## How to use GitHub (every task)
+![Task 1: keep the four main corners](images/tasks/task-1.gif)
 
-| Word | Means |
-| --- | --- |
-| **Branch** | A separate line of work where you can make changes without changing the team's shared `main` branch. |
-| **Commit** | A saved snapshot of your changes, accompanied by a short note. A commit is stored on your computer until you push it. |
-| **Push** | Upload your commits from your computer to GitHub so the team can see them. |
+**Your goal:** when a cable or a shadow touches the tray, the cyan outline still sits exactly on the tray's 4 corners.
 
-For each task, the usual sequence is **make a branch → change files → commit your work → push the branch to GitHub**. This keeps unfinished work separate from the shared project and gives teammates a way to review it.
+**What you need:** Python and this repo for steps 1-5. No camera. For step 6: the camera, the tray and a cable.
 
-In the commands below, text inside angle brackets is a placeholder. Replace it with the value for your task, and leave out the angle brackets when you type the command.
+**Steps:**
+1. **Make your branch** `task1-corners`.
+2. **Add the test.** Create `tests/test_tray_corners.py` with the test in Code help below. Run `python -m pytest tests/test_tray_corners.py`. The cable tests **fail**: that is the problem you are fixing.
+3. **Write `four_main_corners(hull)`** in `vision/tray.py`, above `find_tray_corners`. It gets the outline's corner points. While there are more than 4, it removes the one that sticks out the least: the corner whose triangle with its two neighbors is smallest. A thin cable sticks out very little, so it goes first.
+4. **Use it.** In `find_tray_corners`, replace the 4 `approxPolyDP` lines with the 3 new lines from Code help.
+5. **Run all tests:** `python -m pytest tests/`. Everything passes, the new tests too.
+6. **Try the real tray.** Put a cable behind it. Run `python vision/tray_object_pipeline.py --camera-index 0`, press `r`, and wait for "TRAY LOCKED". The cyan outline should touch the 4 tray corners.
+7. **Push** (see How to push).
 
-| Replace | With | Example (Task 4) |
+**This does not fix:** an object sitting right on a tray corner. That really changes the outline.
+
+**You're done when:**
+
+| Check | How to check | Pass |
 | --- | --- | --- |
-| `<your-branch>` | your task's branch name (table below) | `task4-records` |
-| `<your-files>` | the files you changed, with a space between them | `vision/records.py tests/test_records.py` |
-| `<what you did>` | a short note | `write detection records` |
+| Code works | `python -m pytest tests/` | All tests pass |
+| Drawn trays | The 4 drawn tests: clean tray, thin cable, thick object, dark blob on an edge | Corners within 3 pixels of the true corners |
+| Real tray | Step 6 | The cyan outline touches all 4 tray corners |
 
-| Task | Your branch name |
-| --- | --- |
-| 1 Keep the tray's four main corners | `task1-corners` |
-| 2 Calibrate the cap colors | `task2-colors` |
-| 3 Correct the cap positions for their height | `task3-height` |
-| 4 Save cap detections | `task4-records` |
-
-The **How do I push?** section in each task lists the files and commands for that task. You can copy those commands after replacing any placeholders with your own values.
-
-Enter Git and test commands in a terminal opened inside the project folder. In VS Code, you can open one from **Terminal → New Terminal**; check that the terminal is in the repository before running the commands.
-
-### Step 1: Make your branch (once, at the start of your task)
-
-```
-git checkout main               # go to the team's copy
-git pull                        # download the newest version of it
-git checkout -b <your-branch>  # make your branch and switch to it
-```
-
-To confirm you switched branches, run `git branch`. The active branch has an asterisk (`*`) beside its name.
-
-### Step 2: Work, then save (commit), as often as you like
-
-Write your code in small steps. Whenever one part is working, check which files changed and save just the files for your task in a commit:
-
-```
-git status                                           # see which files you changed (red = not added yet)
-git add <your-files>                         # pick the files to save
-git commit -m "Task <number>: <what you did>" # save them, with a short note
-```
-
-It is useful to commit each time you finish a working piece. If a later change causes a problem, these earlier commits give you a clear point to return to.
-
-### Step 3: Check the tests pass
-
-```
-python -m pytest tests/
-```
-
-If the test run finishes with all tests marked as passed, your changes have passed the current automated checks. If a test fails, read the failure message, fix the cause, and run the command again before committing the fix.
-
-### Step 4: Upload (push)
-
-First time on this branch:
-```
-git push -u origin <your-branch>
-```
-After that, just:
-```
-git push
-```
-
-
-### Keep your branch up to date
-
-When teammates add changes to `main`, bring those changes into your branch so your work stays compatible with the shared project. You can do this when you start work or whenever you need the latest changes:
-
-```
-git checkout main            # go to the team's copy
-git pull                     # download the newest version
-git checkout <your-branch>   # back to your branch
-git merge main               # add the new work into your branch
-```
-
-### Rules
-
-- Keep your changes focused on the files assigned to your task. This reduces the chance that two people edit the same code at the same time.
-- Make commits on your task branch, not on `main`. If you are unsure which branch is active, check with `git branch` before committing.
-- Push your work regularly in small, working pieces so teammates can see progress and help if you get stuck.
-
-### If something goes wrong
-
-| You see | Do |
-| --- | --- |
-| `error: failed to push` / `rejected` | Someone changed the branch. Run `git pull`, then `git push` again. |
-| `CONFLICT` after `git merge main` | 2 people changed the same lines. Don't guess → ask a teammate for help. |
-| Committed on `main` by mistake | Don't push. Ask a teammate before doing anything. |
-| `nothing to commit` | You didn't change anything, or forgot to save the file in your editor. |
-| Not sure where you are | `git status` tells you the branch and changed files. |
-
----
-
-## Task 1: Keep the tray's four main corners
-
-![Task 1: Keep the tray's four main corners](images/tasks/task-1.gif)
-
-**What's wrong now?**
-A thin dark thing touching the tray, like a cable or a shadow, shows up as a spike in the "Tray threshold" window. The spike counts as an extra corner. The four-corner check fails, so the program falls back to a bigger rectangle around everything. The outline is too big, and if it locks like this, every cap's (u, v) is measured against the wrong outline. ([Limitation 1](limitation.md#1-a-thin-object-can-make-the-tray-outline-wrong))
-
-**What's the idea?**
-Look at the outline of the white area (its convex hull, the shape you get by stretching a rubber band around it). While it has more than four corners, remove the one that sticks out the least. How much a corner sticks out is the area of the triangle it makes with its two neighbors. A spike is thin, so its triangle is small and it goes first. The four real corners are big triangles, so they stay.
-
-**What do I build?**
-One new function, `four_main_corners(hull)`, in `vision/tray.py`. It takes the hull and returns four corners. Then use it in `find_tray_corners` instead of the `approxPolyDP` step. The function's arguments and return values stay the same, so nothing else changes.
-
-**Do I need another task first?**
-No.
-
-**How do I test without the camera?**
-Draw a black tray as a four-sided shape on a grey table, as if seen from an angle. Add a thin cable, a thick object and a dark blob touching an edge. Check the corners against the true corners.
-
-**How do I know it works?**
-- A clean tray gives corners within 3 pixels of the true ones.
-- A thin cable, a thicker object and a blob on an edge all give corners within 3 pixels of the true ones.
-- All the tests in `tests/` still pass.
-- It does **not** fix an object sitting on a corner. The corner really moves.
-
-**How do I push?**
-Branch `task1-corners`.
+**How to push:**
 ```
 git add vision/tray.py tests/test_tray_corners.py
 git commit -m "Task 1: keep the four main corners"
 git push -u origin task1-corners
 ```
-
-**What changes with the real camera?**
-Run the program with the real cable in view. Look at the "Tray threshold" window: the spike is still there, but in "Camera / tray localization" the outline should hug the tray. Press `r` and check again after it locks. Compare the corners before and after the change, and write down the corner error you measured.
 
 <details>
 <summary><b>Code help</b> (click to open)</summary>
@@ -207,47 +103,65 @@ def test_blob_on_the_top_edge():
 
 </details>
 
+
+<details>
+<summary><b>Why is this needed?</b> (click to open)</summary>
+
+A thin dark thing touching the tray, like a cable or a shadow, adds a spike to the black-and-white tray picture. The program expects 4 corners. The spike is a fifth one, so the program gives up and uses a big box around everything. The outline is too big, every cap position is measured against it, and the lock keeps it that way for the whole run.
+
+![A thin object can make the tray outline wrong](images/limits/limit-1-problem.gif)
+
+A real case: a cable behind the tray made the outline too big, and the lock kept it.
+
+![A cable behind the tray made the outline too big](images/findings/08-wrong-lock.png)
+
+- Today the program simplifies the outline with `cv2.approxPolyDP`. When that does not give 4 corners, it falls back to `cv2.minAreaRect`.
+- A tested version of the fix took a cable's corner error from 70 pixels to 0, and all existing tests still passed.
+- `--tray-region` (a search box) helps only when the cable is outside the box.
+
+</details>
+
 ---
 
-## Task 2: Calibrate the cap colors
+## Task 2: Measure the cap colors
 
-![Task 2: Calibrate the cap colors](images/tasks/task-2.gif)
+![Task 2: calibrate the cap colors](images/tasks/task-2.gif)
 
-**What's wrong now?**
-The color ranges for red, blue and purple were set by eye. A cap slightly outside a range is missed or breaks into specks. When the lights, the camera or the caps change, someone has to edit the code and guess again. ([Limitation 2](limitation.md#2-cap-colors-were-set-by-eye))
+**Your goal:** in your real light, the program finds every cap with the right color, and finds nothing on an empty tray.
 
-**What's the idea?**
-Measure the real caps. Show the straightened tray. Click on a cap, and the program reads the pixels around the click. Do this a few times for each color. The program works out the hue, saturation and brightness range that covers all the clicked pixels, and saves the ranges in a file. The pipeline loads the file when it starts.
+**What you need:** Python and this repo for steps 1-6. No camera. For steps 7-9: the camera, the tray, all real caps, and the final lights.
 
-**What do I build?**
-- A function that takes a picture and some clicked points and returns the color range that covers them.
-- Functions that save and load the ranges as a JSON file. Loading gives today's ranges if the file is missing.
-- A small tool with a window: press `r`, `b` or `p` to choose the color, click on caps, press `s` to save.
-- A change in `make_color_masks` so it uses the ranges.
+**Steps:**
+1. **Make your branch** `task2-colors`.
+2. **Add the test.** Create `tests/test_colors.py` with the test in Code help. Run it: it fails, because the functions don't exist yet.
+3. **Write the measuring code** in a new file `vision/calibrate_colors.py`: `measure_color`, `save_colors`, `load_colors` (Code help steps 1-4). `measure_color` gets a picture and the spots you clicked, and returns the range of colors at those spots.
+4. **Let the program use it.** In `vision/caps.py`, `make_color_masks` gets an optional `color_ranges` (Code help step 5). With no colors file, nothing changes.
+5. **Run all tests:** `python -m pytest tests/`. Everything passes.
+6. **Add the clicking tool** at the bottom of `vision/calibrate_colors.py` (Code help step 6).
+7. **Measure the real caps.** Put them on the tray, in the final light. Run `python vision/calibrate_colors.py --camera-index 0`. Press `r`, `b` or `p` to choose a color, then click 5 or more spots on each cap of that color, shaded sides too. Press `s` to save `vision/colors.json`.
+8. **Ask a teammate** to read the numbers in `vision/colors.json`. Color rules decide what counts as a cap, so a second person checks them.
+9. **Check** with the table below. Then push, including `vision/colors.json`.
 
-**Do I need another task first?**
-No. It works best after Task 1, so the straightened tray is a good one.
+Do steps 7-9 again whenever the light, the camera or the caps change.
 
-**How do I test without the camera?**
-Draw a picture with a black tray and three caps with known colors, with a little random noise. "Click" by giving points inside each cap. The measured ranges must cover the cap, and must not cover the tray or the other caps.
+**This does not fix:** two caps whose colors look the same to the camera. Use clearly different caps.
 
-**How do I know it works?**
-- Each measured range covers at least 95% of its own cap.
-- It covers none of the tray and none of the other caps.
-- Red works even though it sits at both ends of the hue scale (a range like 176 to 179 and 0 to 9).
-- The pipeline finds the caps when it uses the measured ranges.
-- With no file, the pipeline behaves exactly as before.
+**You're done when:**
 
-**How do I push?**
-Branch `task2-colors`.
+| Check | How to check | Pass |
+| --- | --- | --- |
+| Code works | `python -m pytest tests/` | All tests pass |
+| Drawn caps | The drawn tests in `tests/test_colors.py` | Each measured range covers at least 95% of its own cap, and none of the tray or the other caps |
+| Every cap found | Put each cap color in 10 places across the tray | Found with the right color 10 out of 10 times |
+| No false caps | Run on an empty tray for 1 minute | 0 caps found |
+| Checked by a person | Step 8 | Approved |
+
+**How to push:**
 ```
-git add vision/calibrate_colors.py vision/caps.py tests/test_colors.py
+git add vision/calibrate_colors.py vision/caps.py vision/colors.json tests/test_colors.py
 git commit -m "Task 2: calibrate cap colors"
 git push -u origin task2-colors
 ```
-
-**What changes with the real camera?**
-Put the real caps on the real tray in the real lights. Run `python vision/calibrate_colors.py --camera-index 0`. For each color, click at least five places on the caps, including the shaded side. Press `s`. Then run the pipeline and watch the windows: every cap found, and no false caps on an empty tray for one minute. **A teammate must read the saved numbers before they are used**, because the color ranges decide what counts as a cap. Commit `vision/colors.json`. Run the tool again whenever the lights, the camera or the caps change.
 
 <details>
 <summary><b>Code help</b> (click to open)</summary>
@@ -314,223 +228,77 @@ def test_red_wraps_around():
 
 </details>
 
----
-
-## Task 3: Correct the cap positions for their height
-
-![Task 3: Correct the cap positions for their height](images/tasks/task-3.gif)
-
-**What's wrong now?**
-The program straightens the picture using the tray's four corners. That is exact for things lying on the tray, but our caps sit on tubes, tens of millimeters above it. The camera sees a raised cap pushed away from the middle of the picture, so its (u, v) are wrong by up to tens of millimeters near the edges. ([Limitation 3](limitation.md#3-a-cap-above-the-tray-is-measured-in-the-wrong-place))
-
-**What's the idea?**
-All our caps are at the same height, so they all have the same kind of error. Measure it once. Put one cap in each of at least 4 rack slots whose real positions you measured with a ruler. For each slot, read the (u, v) the program reports. Then `cv2.findHomography` finds the one correction that turns every reported position into the real one. Save it, and apply it to every cap.
-
-**What do I build?**
-- A function that fits the correction from "reported" and "real" positions.
-- A function that applies the correction to one (u, v).
-- Functions that save and load the correction.
-- A small tool that walks you through the slots and saves the result.
-- A change in `TrayCapPipeline`: apply the correction to the (u, v) of every cap, and add a `--correction-file` flag.
-
-**Do I need another task first?**
-No. It helps to have Task 1 done, so the tray corners are good.
-
-**How do I test without the camera?**
-Make up the "reported" positions: take real positions on a grid, and push them away from the middle of the picture, like a raised cap would be. Calibrate with 4 of them, and check that all 9 grid positions come out right.
-
-**How do I know it works?**
-- Calibrating with 4 marks gives every one of the 9 grid positions within 0.002 (0.2% of the tray).
-- Fewer than 4 marks gives a clear error message.
-- Save then load gives the same correction, and a missing file gives `None`.
-- With a correction file, the pipeline's (u, v) change as expected. With no file, nothing changes.
-- All the other tests in `tests/` still pass.
-
-**How do I push?**
-Branch `task3-height`.
-```
-git add vision/height_fix.py vision/calibrate_height.py vision/tray_object_pipeline.py tests/test_height_fix.py tests/test_frame_pipeline.py
-git commit -m "Task 3: correct cap positions for height"
-git push -u origin task3-height
-```
-
-**What changes with the real camera?**
-- Measure the tray's width and depth, and the real position of at least 4 rack slots (corners included). For each slot: millimeters from the tray's top-left corner, divided by the tray's width for `u` and by its depth for `v`.
-- Run `python vision/calibrate_height.py --camera-index 0 --real 0.15,0.15 0.85,0.15 0.85,0.85 0.15,0.85` with your own numbers. It asks you to put **one** cap in each slot, one at a time.
-- It prints how far each slot is off after the fix. Then test with caps in 9 or more other slots, and compare with the ruler. The pass number is the position error you agreed on in [Numbers to agree on](limitation.md#numbers-to-agree-on).
-- Commit `vision/cap_height.json`. If the tubes change length, calibrate again.
 
 <details>
-<summary><b>Code help</b> (click to open)</summary>
+<summary><b>Why is this needed?</b> (click to open)</summary>
 
-**File:** `vision/height_fix.py`
-```python
-import json
-import cv2
-import numpy as np
+Each color is a range of numbers that we typed in by looking at a few screenshots. The camera changes its colors with the light, so caps drift out of their range: a cap is missed, or gets the wrong color, or glare looks like a cap.
 
-def fit_correction(measured, real):
-    """Two lists of (u, v), same length (at least 4) → 3 x 3 matrix."""
+![Cap colors were set by eye](images/limits/limit-2-problem.gif)
 
-def apply_correction(matrix, u, v):
-    """(u, v) → corrected (u, v)."""
+A real case: a red cap labeled purple, and glare in the corner of the cap picture.
 
-def save_correction(matrix, path="vision/cap_height.json"): ...
-def load_correction(path="vision/cap_height.json"):
-    """3 x 3 matrix, or None if the file is missing or broken."""
-```
+![A red cap labeled purple](images/findings/10-red-purple-before.png)
 
-**Steps:**
-1. `fit_correction`: if there are fewer than 4 pairs, `raise ValueError("need at least 4 marks")`. Then `matrix, _ = cv2.findHomography(np.float32(measured), np.float32(real))`.
-2. `apply_correction`: `cv2.perspectiveTransform(np.float32([[[u, v]]]), matrix)[0, 0]`. Return two floats.
-3. `save_correction`: `json.dump({"matrix": matrix.tolist()}, f)`. `load_correction`: catch `OSError`, `ValueError`, `KeyError`, and return `None`.
-4. In `TrayCapPipeline.__init__`:
-   ```python
-   self.correction = load_correction(args.correction_file) if args.correction_file else None
-   ```
-   Import `load_correction` the way `vision/tray_object_pipeline.py` imports its other modules (try `from .height_fix import ...`, and if that fails, `from height_fix import ...`).
-5. In `process_frame`, right after `objects = self.object_tracker.update(detections)`:
-   ```python
-   if self.correction is not None:
-       fixed = []
-       for obj in objects:
-           u, v = apply_correction(self.correction, obj["u"], obj["v"])
-           fixed.append(dict(obj, u=u, v=v))
-       objects = fixed
-   ```
-6. In `parse_args`: `--correction-file`, default `"vision/cap_height.json"` (an empty value turns it off).
-7. The tool `vision/calibrate_height.py`:
-   - flags: `--camera-index`, `--url`, `--transport` (like the main program), and `--real` with one or more `u,v` values
-   - make `TrayCapPipeline(parse_args([... "--correction-file", ""]))`
-   - for each real position: `input("Put ONE cap in slot ... and press Enter")`, then feed frames for 2 seconds and take the **median** of the cap's (u, v). If there is not exactly one cap, say so and ask again.
-   - call `fit_correction`, print for each slot how far it is off after the fix, and call `save_correction`
-8. The pipeline tests in `tests/test_frame_pipeline.py` should not depend on a real file. In that file, replace every `parse_args([])` with `parse_args(["--correction-file", ""])`.
-
-**Test:** `tests/test_height_fix.py`
-```python
-import numpy as np, cv2
-import pytest
-from vision.height_fix import fit_correction, apply_correction, save_correction, load_correction
-from vision.tray_object_pipeline import TrayCapPipeline, parse_args
-
-GRID = [(a, b) for a in (0.15, 0.5, 0.85) for b in (0.15, 0.5, 0.85)]
-MARKS = [(0.15, 0.15), (0.85, 0.15), (0.85, 0.85), (0.15, 0.85)]
-
-def reported(u, v):
-    """What the pipeline reports for a cap on a tube: pushed away from the middle (0.5, 0.5)."""
-    return 0.5 + (u - 0.5) * 1.18 + 0.01, 0.5 + (v - 0.5) * 1.12 - 0.015
-
-def test_four_marks_fix_every_position():
-    matrix = fit_correction([reported(*m) for m in MARKS], MARKS)
-    for u, v in GRID:
-        fixed_u, fixed_v = apply_correction(matrix, *reported(u, v))
-        assert abs(fixed_u - u) < 0.002 and abs(fixed_v - v) < 0.002
-
-def test_too_few_marks():
-    with pytest.raises(ValueError):
-        fit_correction([(0.1, 0.1)] * 3, [(0.1, 0.1)] * 3)
-
-def test_save_and_load(tmp_path):
-    matrix = fit_correction([reported(*m) for m in MARKS], MARKS)
-    save_correction(matrix, tmp_path / "fix.json")
-    assert np.allclose(load_correction(tmp_path / "fix.json"), matrix)
-    assert load_correction(tmp_path / "missing.json") is None
-
-def picture():
-    img = np.full((480, 800, 3), 160, np.uint8)
-    cv2.rectangle(img, (100, 80), (700, 380), (30, 30, 30), -1)
-    cv2.circle(img, (300, 230), 30, (40, 40, 220), -1)                    # a red cap
-    return img
-
-def first_cap_u(flags):
-    pipeline = TrayCapPipeline(parse_args(flags))
-    now, result = 0.0, None
-    while now < 3.0:
-        result = pipeline.process_frame(picture(), now)
-        now += 0.1
-    return result.objects[0]["u"]
-
-def test_pipeline_applies_the_correction(tmp_path):
-    shift = np.array([[1, 0, 0.1], [0, 1, 0], [0, 0, 1]], np.float64)      # moves every u by +0.1
-    save_correction(shift, tmp_path / "fix.json")
-    plain = first_cap_u(["--correction-file", ""])
-    fixed = first_cap_u(["--correction-file", str(tmp_path / "fix.json")])
-    assert abs(fixed - plain - 0.1) < 0.001
-```
+- Hand-set rules today: red needs colorfulness 150 or more; strongly colored shades 165-176 also count as red; a cap must be 45 brighter than the tray; objects at the edge of the tray picture are ignored.
+- The purple cap was measured in other light. The blue cap's brightness was never measured.
+- Red sits at both ends of the shade scale (near 0 and near 179). Code help step 2 shows how to handle that.
 
 </details>
 
 ---
 
-## Task 4: Save cap detections
+## Task 3: Save every cap to a log file
 
-![Task 4: Save cap detections](images/tasks/task-4.gif)
+![Task 3: save cap detections](images/tasks/task-3.gif)
 
-**What's wrong now?**
-When the program finds a cap, it only **shows** it: a line on the screen. Screen lines scroll away, and nothing is saved. After a run we can't ask "where was the red cap at frame 1042?" or compare the camera's numbers with a ruler. ([Limitation 4](limitation.md#4-detections-are-not-saved))
+**Your goal:** after a run, the file `logs/run.jsonl` has one line for every cap found, always with the same names.
 
-**What's the idea?**
-Two small ideas:
-1. A **record** is a short "card" with the facts about **one** cap. Every card has the same facts, with the same names, in the same order. So the code, the tests and your teammates all read it the same way.
-2. A **log file** is a notebook. Each card is written as **one line** at the **end** of the notebook. We never erase a line, we only add new ones at the end. Later you can open the notebook and read what happened.
+**What you need:** Python and this repo for steps 1-6. No camera. For step 7: the camera.
 
-In Python, a card is a `dict`. A line in the log is that dict written as text (this text format is called JSON). For example, this card:
+**What works today:** without windows, the program already prints one line per frame, and you can save it: `python vision/tray_object_pipeline.py --camera-index 0 --no-gui > logs/run.jsonl`. This task makes it one line per cap, and works with the windows open too.
 
-```python
-{"frame": 1042, "time_ms": 1730000123456, "color": "red", "u": 0.412, "v": 0.688,
- "center_x": 206.0, "center_y": 151.4, "box": [190, 135, 32, 33], "area": 780}
-```
+**What a line looks like:**
 
-becomes this one line in the log file (it is the same text, on one line):
-
-```
+```json
 {"frame": 1042, "time_ms": 1730000123456, "color": "red", "u": 0.412, "v": 0.688, "center_x": 206.0, "center_y": 151.4, "box": [190, 135, 32, 33], "area": 780}
 ```
 
-**What are the facts on a card?**
-
 | Name | What it means | Example |
 | --- | --- | --- |
-| `frame` | Which camera picture this cap was found in | `1042` |
+| `frame` | Which camera picture the cap was found in | `1042` |
 | `time_ms` | When that picture was taken (milliseconds) | `1730000123456` |
 | `color` | `"red"`, `"blue"`, `"purple"`, or `"unknown"` | `"red"` |
-| `u` | How far across the tray the cap is (0 = left edge, 1 = right edge) | `0.412` |
-| `v` | How far down the tray the cap is (0 = top edge, 1 = bottom edge) | `0.688` |
+| `u`, `v` | Where the cap is on the tray (0 to 1) | `0.412`, `0.688` |
 | `center_x`, `center_y` | The cap's middle, in pixels | `206.0`, `151.4` |
 | `box` | The box around the cap: x, y, width, height in pixels | `[190, 135, 32, 33]` |
 | `area` | How big the cap looks, in pixels | `780` |
 
-**What do I build?**
-Two small functions in a new file:
-- `make_record(frame, time_ms, obj)`: takes **one** cap that the pipeline found (`obj`) and returns its card (the dict above).
-- `write_log(record, path)`: adds the card as **one line** at the end of the log file.
+**Steps:**
+1. **Make your branch** `task3-records`.
+2. **Add the test.** Create `tests/test_records.py` with the test in Code help. Run it: it fails.
+3. **Write `make_record(frame, time_ms, obj)`** in a new file `vision/records.py`. `obj` is one cap from `result.objects`. It returns a dict with exactly the names in the table above. If the color isn't red, blue or purple, use `"unknown"`.
+4. **Write `write_log(record, path)`.** It adds the record as **one line** at the **end** of the file, and never erases old lines.
+5. **Run all tests:** `python -m pytest tests/`. Everything passes.
+6. **Add `--log-file`** to `main()` in `vision/tray_object_pipeline.py`. In every frame, call `make_record` and `write_log` once for **each** cap in `result.objects`. Add `logs/` to `.gitignore`.
+7. **Try it.** Run 1 minute with the windows open: `python vision/tray_object_pipeline.py --camera-index 0 --log-file logs/run.jsonl`. Open the file and compare it with what was printed.
+8. **Push.**
 
-Where does `obj` come from? The pipeline gives a list of caps in `result.objects`. Each item of that list is one `obj`.
+**You're done when:**
 
-**What if the color isn't red, blue, or purple?**
-The pipeline only reports these 3 colors today. But if `color` is anything else, write `"unknown"` on the card. Don't throw the cap away: the log keeps it, so a person can look at it later.
+| Check | How to check | Pass |
+| --- | --- | --- |
+| Code works | `python -m pytest tests/` | All tests pass |
+| Records | The test in `tests/test_records.py`: write 3 records, read them back | 3 lines, each with exactly the names in the table |
+| Unknown color | Same test, with a green cap | Saved as `"unknown"` |
+| Real run | Step 7 | A line for every cap, matching what was printed |
 
-**Do I need another task first?**
-No. You can build and test everything with made-up caps, so you can start right away.
-
-**How do I test without the camera?**
-Write a fake cap by hand in your test, in the same shape the pipeline gives: `color`, `u`, `v`, `center_x`, `center_y`, `box`, `area`. For example, a red cap at `u = 0.412` and `v = 0.688`. You don't need a camera or OpenCV.
-
-**How do I know it works?**
-- Write 3 cards. Open the log file: it has exactly 3 lines.
-- Read each line back. It has every name from the table, and no extra names.
-- A cap with color `"green"` is written as `"unknown"`.
-
-**How do I push?**
-Branch `task4-records`.
+**How to push:**
 ```
-git add vision/records.py tests/test_records.py
-git commit -m "Task 4: records + log"
-git push -u origin task4-records
+git add vision/records.py vision/tray_object_pipeline.py tests/test_records.py .gitignore
+git commit -m "Task 3: records + log"
+git push -u origin task3-records
 ```
-
-**What changes with the real camera?**
-Nothing in the two functions. In `main()`, after the program finds the caps in each frame, call `make_record` and `write_log` once for **each** cap in `result.objects`. Add a `--log-file` flag so you can choose the file. Add `logs/` to `.gitignore`, so run data is not committed.
 
 <details>
 <summary><b>Code help</b> (click to open)</summary>
@@ -581,5 +349,15 @@ def test_log_lines(tmp_path):
 def test_unknown_color():
     assert fake(0, "green")["color"] == "unknown"
 ```
+
+</details>
+
+
+<details>
+<summary><b>Why is this needed?</b> (click to open)</summary>
+
+With the windows open, the program prints the caps once per second, and the lines scroll away. After a run we can't look back, or compare the camera's positions with a ruler. A log file keeps every cap, with fixed names, so code, tests and people all read it the same way.
+
+![Detections are not saved](images/limits/limit-3-problem.gif)
 
 </details>

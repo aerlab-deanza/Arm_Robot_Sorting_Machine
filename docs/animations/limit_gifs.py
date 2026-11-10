@@ -1,6 +1,6 @@
-"""3Blue1Brown-style GIFs that show each problem in limitation.md.
+"""3Blue1Brown-style GIFs that show each problem in task_delegation.md (in the folded "Why is this needed?" parts).
 
-    python docs/animations/limit_gifs.py          # render all 4 GIFs
+    python docs/animations/limit_gifs.py          # render all 3 GIFs
     python docs/animations/limit_gifs.py 2 4      # only limits 2 and 4
 
 Needs Manim CE, LaTeX and FFmpeg. GIFs go to docs/images/limits/limit-N-problem.gif.
@@ -107,55 +107,8 @@ class Limit2Colors(FastScene):
 
 # ----------------------------------------------------------------- limit 3
 
-class Limit3Height(FastScene):
-    title = "Limit 3: a cap above the tray"
-
-    def construct(self):
-        floor_y = -1.9
-        tray = Line([-5.5, floor_y, 0], [5.5, floor_y, 0], color=GREY, stroke_width=6)
-        tray_l = label("tray surface", 24, GREY).next_to(tray, DOWN, buff=0.15).align_to(tray, LEFT)
-        camera = Rectangle(width=0.9, height=0.5, color=BLUE, stroke_width=3).move_to([0.0, 3.2, 0])
-        camera_l = label("camera, looking straight down", 24, BLUE).next_to(camera, RIGHT, buff=0.2)
-
-        def tube_with_cap(x):
-            tube = Rectangle(width=0.5, height=1.7, stroke_width=0).set_fill(DARK, 1).move_to([x, floor_y + 0.85, 0])
-            cap = Rectangle(width=0.7, height=0.25, stroke_width=0).set_fill(RED, 1).move_to([x, floor_y + 1.82, 0])
-            return VGroup(tube, cap)
-
-        far = tube_with_cap(3.2)
-        self.say("Our caps sit on tubes, **above** the tray",
-                 Create(tray), FadeIn(tray_l), FadeIn(far), FadeIn(camera), FadeIn(camera_l), run_time=1.0)
-
-        cap_top = np.array([3.2, floor_y + 1.82, 0])
-        cam_pt = np.array([0.0, 3.0, 0])
-        direction = (cap_top - cam_pt) / np.linalg.norm(cap_top - cam_pt)
-        t_floor = (floor_y - cam_pt[1]) / direction[1]
-        seen = cam_pt + direction * t_floor
-        ray = Line(cam_pt, cap_top, color=YELLOW, stroke_width=3)
-        ray_on = DashedVMobject(Line(cap_top, seen, color=YELLOW, stroke_width=3))
-        self.say("The camera sees the cap along a **ray**", Create(ray), run_time=0.9, hold=0.2)
-        real = Dot([3.2, floor_y, 0], color=GREEN, radius=0.12)
-        seen_dot = Dot(seen, color=RED, radius=0.12)
-        real_l = label("really here", 24, GREEN).next_to(real, DOWN, buff=0.45).shift(LEFT * 0.7)
-        seen_l = label("measured here", 24, RED).next_to(seen_dot, DOWN, buff=0.45).shift(RIGHT * 0.2)
-        self.say("Straightening puts every point **on the tray surface**",
-                 Create(ray_on), FadeIn(real), FadeIn(seen_dot), FadeIn(real_l), FadeIn(seen_l), run_time=1.2)
-
-        near = tube_with_cap(0.9)
-        near_top = np.array([0.9, floor_y + 1.82, 0])
-        d2 = (near_top - cam_pt) / np.linalg.norm(near_top - cam_pt)
-        seen2 = cam_pt + d2 * ((floor_y - cam_pt[1]) / d2[1])
-        ray2 = Line(cam_pt, near_top, color=YELLOW, stroke_width=3)
-        ray2_on = DashedVMobject(Line(near_top, seen2, color=YELLOW, stroke_width=3))
-        dots2 = VGroup(Dot([0.9, floor_y, 0], color=GREEN, radius=0.1), Dot(seen2, color=RED, radius=0.1))
-        self.say("Near the middle the error is **small**. Near the edges it is **big**",
-                 FadeIn(near), Create(ray2), Create(ray2_on), FadeIn(dots2), run_time=1.3, hold=1.8)
-
-
-# ----------------------------------------------------------------- limit 4
-
-class Limit4Records(FastScene):
-    title = "Limit 4: nothing is saved"
+class Limit3Records(FastScene):
+    title = "Limit 3: nothing is saved"
 
     def construct(self):
         screen = Rectangle(width=6.4, height=3.4, color=GREY).move_to([-2.6, 0.5, 0])
@@ -178,7 +131,7 @@ class Limit4Records(FastScene):
         self.say("We can't replay a run or **compare it** with a ruler", Indicate(question, color=YELLOW), hold=1.8)
 
 
-SCENES = {1: Limit1Spike, 2: Limit2Colors, 3: Limit3Height, 4: Limit4Records}
+SCENES = {1: Limit1Spike, 2: Limit2Colors, 3: Limit3Records}
 
 
 def render(number, width=800, fps=12):

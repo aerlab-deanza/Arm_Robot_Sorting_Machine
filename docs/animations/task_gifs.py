@@ -1,6 +1,6 @@
 """Short 3Blue1Brown-style GIFs that explain each task in task_delegation.md.
 
-    python docs/animations/task_gifs.py            # render all 4 GIFs
+    python docs/animations/task_gifs.py            # render all 3 GIFs
     python docs/animations/task_gifs.py 2 4        # only tasks 2 and 4
 
 Needs Manim CE, LaTeX and FFmpeg. GIFs go to docs/images/tasks/task-N.gif.
@@ -184,51 +184,8 @@ class Task2Colors(TaskScene):
 
 # ---------------------------------------------------------------- Task 3
 
-class Task3Height(TaskScene):
-    title = "Task 3: Correct for the cap height"
-
-    def construct(self):
-        width, height = 7.6, 4.2
-        center = np.array([-1.2, 0.5, 0.0])
-        tray = Rectangle(width=width, height=height, stroke_color=GREY, stroke_width=2).set_fill(TRAY, 1).move_to(center)
-        left, top = center[0] - width / 2, center[1] + height / 2
-
-        def real_xy(u, v):
-            return np.array([left + u * width, top - v * height, 0.0])
-
-        def reported_xy(u, v):
-            p = real_xy(u, v)
-            return center + (p - center) * 1.18 + np.array([0.12, -0.1, 0.0])
-
-        marks = [(0.15, 0.2), (0.85, 0.2), (0.85, 0.8), (0.15, 0.8)]
-        rings = VGroup(*(Circle(0.2, color=YELLOW, stroke_width=3).move_to(real_xy(u, v)) for u, v in marks))
-        self.say("Measure the **real** positions of 4 slots with a ruler", FadeIn(tray), LaggedStart(*(Create(r) for r in rings), lag_ratio=0.2), run_time=1.2)
-
-        dots = VGroup(*(Dot(reported_xy(u, v), radius=0.12, color=RED) for u, v in marks))
-        arrows = VGroup(*(Arrow(d.get_center(), r.get_center(), buff=0.12, color=WHITE, stroke_width=3, max_tip_length_to_length_ratio=0.3)
-                          for d, r in zip(dots, rings)))
-        self.say("Put one cap in each slot. The program **reports** other positions",
-                 LaggedStart(*(FadeIn(d, scale=2) for d in dots), lag_ratio=0.2), run_time=1.0)
-        self.say("Fit **one correction** that turns reported into real",
-                 LaggedStart(*(GrowArrow(a) for a in arrows), lag_ratio=0.2), run_time=1.0)
-        self.play(*(d.animate.move_to(r.get_center()).set_color(GREEN) for d, r in zip(dots, rings)), FadeOut(arrows), run_time=1.2)
-
-        card = VGroup(Rectangle(width=3.0, height=0.9, color=BLUE, stroke_width=3), mono("cap_height.json", 20, BLUE))
-        card[1].move_to(card[0])
-        card.move_to([5.0, 2.6, 0])
-        self.say("Save it. It is applied to **every** cap", FadeIn(card, shift=DOWN * 0.2), run_time=0.8, hold=0.3)
-
-        others = [(0.5, 0.5), (0.3, 0.65), (0.7, 0.35), (0.5, 0.15)]
-        extra = VGroup(*(Dot(reported_xy(u, v), radius=0.12, color=RED) for u, v in others))
-        self.play(LaggedStart(*(FadeIn(d, scale=2) for d in extra), lag_ratio=0.15), run_time=0.8)
-        self.say("Every cap lands on its **real position**",
-                 *(d.animate.move_to(real_xy(u, v)).set_color(GREEN) for d, (u, v) in zip(extra, others)), run_time=1.2, hold=1.6)
-
-
-# ---------------------------------------------------------------- Task 4
-
-class Task4Records(TaskScene):
-    title = "Task 4: Save cap detections"
+class Task3Records(TaskScene):
+    title = "Task 3: Save cap detections"
 
     def construct(self):
         # The camera picture with two caps.
@@ -295,7 +252,7 @@ class Task4Records(TaskScene):
         self.wait(1.2)
 
 
-SCENES = {1: Task1Corners, 2: Task2Colors, 3: Task3Height, 4: Task4Records}
+SCENES = {1: Task1Corners, 2: Task2Colors, 3: Task3Records}
 
 
 def render(number, width=800, fps=12):
