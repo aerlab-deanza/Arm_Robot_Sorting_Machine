@@ -38,6 +38,41 @@ _configure_ffmpeg_from_args()
 import cv2  # noqa: E402  (must load after the FFmpeg options are set)
 
 
+def lock_camera_settings(video, warmup_frames=30):
+    """Freeze the camera's automatic white balance and exposure.
+
+    Auto white balance and exposure change the picture when a bright object
+    (a white board) moves in view: the black tray turns blue and red caps
+    shift in hue. This lets the camera settle, reads its current values,
+    turns the automatic modes off, and sets the same values by hand. Cameras
+    differ: one may ignore some of these settings (set() returns False). The
+    exposure mode value 0.25 means "manual" on Windows DirectShow cameras.
+
+    Args:
+        video: An opened cv2.VideoCapture for a USB camera.
+        warmup_frames: How many frames to read first, so the automatic modes
+            have settled before the values are read.
+
+    Returns:
+        A dict with the values that were read (``white_balance``,
+        ``exposure``) and a True/False for each setting that was tried
+        (``white_balance_auto_off``, ``white_balance_value_set``,
+        ``exposure_auto_off``, ``exposure_value_set``).
+    """
+    for _ in range(warmup_frames):
+        video.read()
+    white_balance = video.get(cv2.CAP_PROP_WB_TEMPERATURE)
+    exposure = video.get(cv2.CAP_PROP_EXPOSURE)
+    return {
+        "white_balance": white_balance,
+        "exposure": exposure,
+        "white_balance_auto_off": bool(video.set(cv2.CAP_PROP_AUTO_WB, 0)),
+        "white_balance_value_set": bool(video.set(cv2.CAP_PROP_WB_TEMPERATURE, white_balance)),
+        "exposure_auto_off": bool(video.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)),
+        "exposure_value_set": bool(video.set(cv2.CAP_PROP_EXPOSURE, exposure)),
+    }
+
+
 def open_capture(source, transport):
     """Open a USB camera or a network video stream.
 

@@ -12,19 +12,18 @@ For each task, the usual sequence is **make a branch → change files → commit
 
 In the commands below, text inside angle brackets is a placeholder. Replace it with the value for your task, and leave out the angle brackets when you type the command.
 
-| Replace | With | Example (Task 2) |
+| Replace | With | Example (Task 4) |
 | --- | --- | --- |
-| `<your-branch>` | your task's branch name (table below) | `task2-records` |
+| `<your-branch>` | your task's branch name (table below) | `task4-records` |
 | `<your-files>` | the files you changed, with a space between them | `vision/records.py tests/test_records.py` |
 | `<what you did>` | a short note | `write detection records` |
 
 | Task | Your branch name |
 | --- | --- |
-| 1 Fix camera distortion | `task1-lens` |
-| 2 Save cap detections | `task2-records` |
-| 3 Check cap positions | `task3-position-test` |
-| 4 Check the tray outline | `task4-outline-check` |
-| 5 Run the pick cycle | `task5-pick-loop` |
+| 1 Keep the tray's four main corners | `task1-corners` |
+| 2 Calibrate the cap colors | `task2-colors` |
+| 3 Correct the cap positions for their height | `task3-height` |
+| 4 Save cap detections | `task4-records` |
 
 The **How do I push?** section in each task lists the files and commands for that task. You can copy those commands after replacing any placeholders with your own values.
 
@@ -101,139 +100,437 @@ git merge main               # add the new work into your branch
 
 ---
 
-## Task 1: Fix camera distortion
+## Task 1: Keep the tray's four main corners
 
-![Task 1: Fix camera distortion](images/tasks/task-1.gif)
+![Task 1: Keep the tray's four main corners](images/tasks/task-1.gif)
 
 **What's wrong now?**
-The camera lens can make straight lines appear curved, particularly near the edges of an image. This effect is called lens distortion. Because the vision system uses image locations to estimate where caps are, distortion can shift a cap's detected position and make the arm's target less accurate. ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet))
+A thin dark thing touching the tray, like a cable or a shadow, shows up as a spike in the "Tray threshold" window. The spike counts as an extra corner. The four-corner check fails, so the program falls back to a bigger rectangle around everything. The outline is too big, and if it locks like this, every cap's (u, v) is measured against the wrong outline. ([Limitation 1](limitation.md#1-a-thin-object-can-make-the-tray-outline-wrong))
 
 **What's the idea?**
-Take several photos of a checkerboard, moving and tilting it so it appears in different parts of the image. Since the checkerboard's shape is known, OpenCV can compare its expected straight grid with the photographed grid and estimate how the lens distorts the image. Save that estimate and use it to correct later photos from the same camera.
+Look at the outline of the white area (its convex hull, the shape you get by stretching a rubber band around it). While it has more than four corners, remove the one that sticks out the least. How much a corner sticks out is the area of the triangle it makes with its two neighbors. A spike is thin, so its triangle is small and it goes first. The four real corners are big triangles, so they stay.
 
 **What do I build?**
-Build two functions. The first should use checkerboard photos to calculate the camera's distortion values and save them to a file. The second should load those saved values and use them to correct an input image.
+One new function, `four_main_corners(hull)`, in `vision/tray.py`. It takes the hull and returns four corners. Then use it in `find_tray_corners` instead of the `approxPolyDP` step. The function's arguments and return values stay the same, so nothing else changes.
 
 **Do I need another task first?**
 No.
 
 **How do I test without the camera?**
-Use OpenCV's sample checkerboard photos as input instead of taking pictures with the robot camera. This lets you check that the calibration function can find the board, calculate distortion values, save them, and use them to correct an image.
+Draw a black tray as a four-sided shape on a grey table, as if seen from an angle. Add a thin cable, a thick object and a dark blob touching an edge. Check the corners against the true corners.
 
 **How do I know it works?**
-- The calibration reprojection error is below 1 pixel.
-- Corrected images retain their original dimensions.
-- Checkerboard lines near the image edges appear straighter after correction.
+- A clean tray gives corners within 3 pixels of the true ones.
+- A thin cable, a thicker object and a blob on an edge all give corners within 3 pixels of the true ones.
+- All the tests in `tests/` still pass.
+- It does **not** fix an object sitting on a corner. The corner really moves.
 
 **How do I push?**
-Branch `task1-lens`.
+Branch `task1-corners`.
 ```
-git add vision/lens.py tests/test_lens.py tests/fake_data/checkerboard
-git commit -m "Task 1: lens calibration"
-git push -u origin task1-lens
+git add vision/tray.py tests/test_tray_corners.py
+git commit -m "Task 1: keep the four main corners"
+git push -u origin task1-corners
 ```
 
 **What changes with the real camera?**
-For the hardware check, print a checkerboard and attach it flat to a piece of cardboard so it does not bend while you take pictures. Capture 10–20 photos with the robot camera, changing the board's position and angle and making sure it appears near the edges of the image as well as in the center. Count the inner corners, where four squares meet, and set `PATTERN` to those counts. Save the resulting calibration in `vision/lens_calib.npz` and commit the file. The target reprojection error is below 1 pixel.
+Run the program with the real cable in view. Look at the "Tray threshold" window: the spike is still there, but in "Camera / tray localization" the outline should hug the tray. Press `r` and check again after it locks. Compare the corners before and after the change, and write down the corner error you measured.
 
 <details>
 <summary><b>Code help</b> (click to open)</summary>
 
-**File:** `vision/lens.py`
+**File:** `vision/tray.py`
 ```python
-PATTERN = (7, 6)   # inside corners (where 4 squares meet), not squares
-
-def calibrate(photo_paths, save_path):
-    """Checkerboard photos → lens numbers saved to save_path. Returns error in pixels."""
-
-def undistort(img, calib_path="vision/lens_calib.npz"):
-    """Picture → straightened picture."""
+def four_main_corners(hull):
+    """Reduce a convex outline (from cv2.convexHull) to its 4 most important corners."""
 ```
 
 **Steps:**
-1. Each photo: grey → `cv2.findChessboardCorners(gray, PATTERN)`. `False` → skip that photo.
-2. Make the "perfect board" points (same for every photo):
+1. Make a list of the hull's points: `points = [tuple(p) for p in hull.reshape(-1, 2).astype(np.float64)]`.
+2. `while len(points) > 4:`
+   - For each point, work out the triangle area with its neighbors `before = points[i - 1]` and `after = points[(i + 1) % len(points)]`:
+     `abs((x - bx) * (ay - by) - (ax - bx) * (y - by)) / 2`
+   - `del points[...]` the one with the smallest area (`np.argmin`).
+3. Return `np.array(points, dtype=np.float32).reshape(-1, 1, 2)`.
+4. In `find_tray_corners`, replace these lines (the `perimeter`, `simplified` and `if len(simplified) == 4 ...` lines):
    ```python
-   board = np.zeros((PATTERN[0] * PATTERN[1], 3), np.float32)
-   board[:, :2] = np.mgrid[0:PATTERN[0], 0:PATTERN[1]].T.reshape(-1, 2)
+   perimeter = cv2.arcLength(hull, True)
+   simplified = cv2.approxPolyDP(hull, 0.04 * perimeter, True)
+   if len(simplified) == 4 and cv2.isContourConvex(simplified):
+       corners = order_corners(simplified)
    ```
-3. `err, K, dist, _, _ = cv2.calibrateCamera(boards, corners, gray.shape[::-1], None, None)`
-4. Save: `np.savez(save_path, K=K, dist=dist)`. Return `err`.
-5. `undistort`: `d = np.load(calib_path)` → `cv2.undistort(img, d["K"], d["dist"])`.
+   with:
+   ```python
+   simplified = four_main_corners(hull)
+   if cv2.contourArea(simplified) >= 0.9 * cv2.contourArea(hull):
+       corners = order_corners(simplified)
+   ```
+   Keep the `elif rectangularity >= 0.58:` fallback after it. The new check keeps the four corners only if they still cover at least 90% of the hull. If not, the shape is not a tray, and the old fallback decides.
 
-**Fake data:** download `left01.jpg` … `left14.jpg` from [opencv samples/data](https://github.com/opencv/opencv/tree/4.x/samples/data) into `tests/fake_data/checkerboard/`. They have `(7, 6)` inside corners. Some photos return `False`, that's fine.
-
-**Test:** `tests/test_lens.py`
+**Fake data and test:** `tests/test_tray_corners.py`
 ```python
-import glob, cv2
-from vision.lens import calibrate, undistort
+import numpy as np, cv2
+from vision.tray import find_tray_corners
 
-PHOTOS = sorted(glob.glob("tests/fake_data/checkerboard/left*.jpg"))
+TRUE = np.float32([[150, 90], [650, 90], [720, 380], [80, 380]])   # a tray seen at an angle
+ARGS = (0, 179, 0, 0, 130, 85, 0.04, 9)                              # pipeline defaults
+DARK = (30, 30, 30)
 
-def test_error_small(tmp_path):
-    assert calibrate(PHOTOS, tmp_path / "calib.npz") < 1.0     # samples give ~0.5
+def picture():
+    img = np.full((480, 800, 3), 160, np.uint8)                      # grey table
+    cv2.fillConvexPoly(img, TRUE.astype(np.int32), DARK)             # black tray
+    return img
 
-def test_undistort_keeps_size(tmp_path):
-    calibrate(PHOTOS, tmp_path / "calib.npz")
-    img = cv2.imread(PHOTOS[0])
-    assert undistort(img, tmp_path / "calib.npz").shape == img.shape
+def corner_error(img):
+    corners, _ = find_tray_corners(img, *ARGS)
+    assert corners is not None
+    return float(np.abs(corners - TRUE).max())
+
+def test_clean_tray():
+    assert corner_error(picture()) < 3
+
+def test_thin_cable():
+    img = picture()
+    cv2.rectangle(img, (400, 20), (406, 100), DARK, -1)              # 6 pixels wide, sticks up 70
+    assert corner_error(img) < 3
+
+def test_thick_object():
+    img = picture()
+    cv2.rectangle(img, (400, 60), (430, 100), DARK, -1)
+    assert corner_error(img) < 3
+
+def test_blob_on_the_top_edge():
+    img = picture()
+    cv2.circle(img, (300, 90), 20, DARK, -1)
+    assert corner_error(img) < 3
 ```
 
 </details>
 
 ---
 
-## Task 2: Save cap detections
+## Task 2: Calibrate the cap colors
 
-![Task 2: Save cap detections](images/tasks/task-2.gif)
+![Task 2: Calibrate the cap colors](images/tasks/task-2.gif)
 
 **What's wrong now?**
-The pipeline prints the caps it sees once per second, then forgets them. Printed text is hard to use later: it is not saved, and each part of the system may read the values differently. The robot code also needs one fixed format. ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet))
-
-**What does the pipeline give me today?**
-For each cap, `find_objects()` / `ObjectTracker` give a dict with:
-
-| Key | Meaning |
-| --- | --- |
-| `color` | `"red"`, `"blue"` or `"purple"` |
-| `u`, `v` | Cap center as a fraction of the tray (0-1). `u` across, `v` down. |
-| `center_x`, `center_y` | Cap center in pixels, on the straightened tray picture |
-| `box` | `(x, y, width, height)` in pixels |
-| `area` | Cap size in pixels |
-
-There are **no millimeters, no slot and no color confidence yet.** Those come later (pixel → mm is [Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet); Task 3 checks it). Task 2 saves what exists today.
+The color ranges for red, blue and purple were set by eye. A cap slightly outside a range is missed or breaks into specks. When the lights, the camera or the caps change, someone has to edit the code and guess again. ([Limitation 2](limitation.md#2-cap-colors-were-set-by-eye))
 
 **What's the idea?**
-Turn every detected cap into a **record**: a small dict with fixed field names, plus the frame number and the time. Add each record as one line in a **log file**. Later tasks add the extra fields (`x_mm`, `y_mm`, `slot`, …) to the same record, so keep the code easy to extend.
+Measure the real caps. Show the straightened tray. Click on a cap, and the program reads the pixels around the click. Do this a few times for each color. The program works out the hue, saturation and brightness range that covers all the clicked pixels, and saves the ranges in a file. The pipeline loads the file when it starts.
 
 **What do I build?**
-- `make_record(frame, time_ms, obj)`: takes one cap dict from the pipeline, returns a record with exactly these fields: `frame, time_ms, color, u, v, center_x, center_y, box, area`.
-- `write_log(record, path)`: adds the record as one line at the end of the log file.
-
-**What if the color isn't red, blue, or purple?**
-The pipeline only reports these 3 colors today. But if `color` is anything else, store `"unknown"`. It stays visible in the log for review. The pick loop must not send an `"unknown"` cap to a bin.
+- A function that takes a picture and some clicked points and returns the color range that covers them.
+- Functions that save and load the ranges as a JSON file. Loading gives today's ranges if the file is missing.
+- A small tool with a window: press `r`, `b` or `p` to choose the color, click on caps, press `s` to save.
+- A change in `make_color_masks` so it uses the ranges.
 
 **Do I need another task first?**
-No. You can build records from made-up caps, so start with this while other work is underway.
+No. It works best after Task 1, so the straightened tray is a good one.
 
 **How do I test without the camera?**
-Write a fake cap dict in your test, the same shape the pipeline gives. For example, a red cap at `u = 0.412`, `v = 0.688`. No camera and no OpenCV needed.
+Draw a picture with a black tray and three caps with known colors, with a little random noise. "Click" by giving points inside each cap. The measured ranges must cover the cap, and must not cover the tray or the other caps.
 
 **How do I know it works?**
-- Write 3 records. The log has exactly 3 lines.
-- Read each line back. It has all the fields above and no extra ones.
-- A cap with color `"green"` is stored as `"unknown"`.
+- Each measured range covers at least 95% of its own cap.
+- It covers none of the tray and none of the other caps.
+- Red works even though it sits at both ends of the hue scale (a range like 176 to 179 and 0 to 9).
+- The pipeline finds the caps when it uses the measured ranges.
+- With no file, the pipeline behaves exactly as before.
 
 **How do I push?**
-Branch `task2-records`.
+Branch `task2-colors`.
 ```
-git add vision/records.py tests/test_records.py
-git commit -m "Task 2: records + log"
-git push -u origin task2-records
+git add vision/calibrate_colors.py vision/caps.py tests/test_colors.py
+git commit -m "Task 2: calibrate cap colors"
+git push -u origin task2-colors
 ```
 
 **What changes with the real camera?**
-Nothing in the functions. In `main()`, call `make_record` and `write_log` for each object in the steady `objects` list (the one that is printed once per second). Add `logs/` to `.gitignore` so run data is not committed.
+Put the real caps on the real tray in the real lights. Run `python vision/calibrate_colors.py --camera-index 0`. For each color, click at least five places on the caps, including the shaded side. Press `s`. Then run the pipeline and watch the windows: every cap found, and no false caps on an empty tray for one minute. **A teammate must read the saved numbers before they are used**, because the color ranges decide what counts as a cap. Commit `vision/colors.json`. Run the tool again whenever the lights, the camera or the caps change.
+
+<details>
+<summary><b>Code help</b> (click to open)</summary>
+
+**File:** `vision/calibrate_colors.py`
+```python
+def measure_color(straight_tray_bgr, points, radius=6, margin=4):
+    """Picture + clicked points → {"hue": [[low, high], ...], "min_saturation": n, "min_value": n}."""
+
+def save_colors(ranges, path="vision/colors.json"): ...
+def load_colors(path="vision/colors.json"):
+    """{"red": ..., "blue": ..., "purple": ...}, or None if the file is missing."""
+```
+
+**Steps:**
+1. `measure_color`: convert to HSV (`cv2.cvtColor(..., cv2.COLOR_BGR2HSV)`). For each point take the pixels inside a disk of `radius`. Put all pixels in one list.
+2. Hue is a circle. Red is near 0 **and** near 179, so a plain minimum and maximum would give 0 to 179. Move the hue first: `shifted = (hue + 90) % 180`. Now red sits in the middle. Take the 2nd and 98th percentile (`np.percentile`), add the `margin`, and move it back: `(value - 90) % 180`. If the low end is bigger than the high end, the range wraps: save it as two ranges, `[0, high]` and `[low, 179]`.
+3. `min_saturation`: the 2nd percentile of the saturation minus `margin * 2`. Same for `min_value`.
+4. `save_colors` / `load_colors`: a JSON file with the three colors.
+5. In `vision/caps.py`: `make_color_masks` gets an optional `color_ranges` argument. If it is `None`, use `load_colors()`. If that is also `None` (no file), run today's code exactly as it is: it has extra rules that a plain range cannot say, such as strongly colored pixels in the hue band 165-176 counting as red and not purple. Only when ranges are given, build each mask with `cv2.inRange` for every hue range, and join them with `cv2.bitwise_or`.
+6. The tool (`if __name__ == "__main__":`): open the camera, find and straighten the tray (use `TrayCapPipeline` and `straighten_tray`), show the straightened tray, and use `cv2.setMouseCallback` to collect clicks for the chosen color.
+
+**Fake data and test:** `tests/test_colors.py`
+```python
+import numpy as np, cv2
+from vision.calibrate_colors import measure_color
+from vision.caps import make_color_masks
+
+TRUE = {"red": (2, 200, 200), "blue": (108, 200, 180), "purple": (150, 110, 170)}   # hue, saturation, brightness
+CENTERS = {"red": (100, 150), "blue": (300, 150), "purple": (500, 150)}
+
+def picture():
+    rng = np.random.default_rng(1)
+    img = np.zeros((300, 600, 3), np.uint8)
+    img[:] = cv2.cvtColor(np.uint8([[[0, 0, 30]]]), cv2.COLOR_HSV2BGR)[0, 0]       # black tray
+    for name, (x, y) in CENTERS.items():
+        h, s, v = TRUE[name]
+        patch = np.zeros((60, 60, 3), np.uint8)
+        patch[..., 0] = np.clip(h + rng.integers(-3, 4, (60, 60)), 0, 179)
+        patch[..., 1] = np.clip(s + rng.integers(-15, 16, (60, 60)), 0, 255)
+        patch[..., 2] = np.clip(v + rng.integers(-15, 16, (60, 60)), 0, 255)
+        img[y - 30:y + 30, x - 30:x + 30] = cv2.cvtColor(patch, cv2.COLOR_HSV2BGR)
+    return img
+
+def clicks(name):
+    x, y = CENTERS[name]
+    return [(x + dx, y + dy) for dx, dy in ((0, 0), (10, 5), (-10, 8), (5, -10))]
+
+def test_measured_ranges_find_the_caps():
+    img = picture()
+    ranges = {name: measure_color(img, clicks(name)) for name in CENTERS}
+    masks, _, _ = make_color_masks(img, 70, 45, color_ranges=ranges)
+    for name, (x, y) in CENTERS.items():
+        assert masks[name][y - 30:y + 30, x - 30:x + 30].mean() > 0.95 * 255   # its own cap
+        assert masks[name][:40, :40].max() == 0                                # the tray
+        for other, (ox, oy) in CENTERS.items():
+            if other != name:
+                assert masks[name][oy - 30:oy + 30, ox - 30:ox + 30].max() == 0
+
+def test_red_wraps_around():
+    img = picture()
+    assert len(measure_color(img, clicks("red"))["hue"]) == 2                  # [0, 9] and [176, 179]
+```
+
+</details>
+
+---
+
+## Task 3: Correct the cap positions for their height
+
+![Task 3: Correct the cap positions for their height](images/tasks/task-3.gif)
+
+**What's wrong now?**
+The program straightens the picture using the tray's four corners. That is exact for things lying on the tray, but our caps sit on tubes, tens of millimeters above it. The camera sees a raised cap pushed away from the middle of the picture, so its (u, v) are wrong by up to tens of millimeters near the edges. ([Limitation 3](limitation.md#3-a-cap-above-the-tray-is-measured-in-the-wrong-place))
+
+**What's the idea?**
+All our caps are at the same height, so they all have the same kind of error. Measure it once. Put one cap in each of at least 4 rack slots whose real positions you measured with a ruler. For each slot, read the (u, v) the program reports. Then `cv2.findHomography` finds the one correction that turns every reported position into the real one. Save it, and apply it to every cap.
+
+**What do I build?**
+- A function that fits the correction from "reported" and "real" positions.
+- A function that applies the correction to one (u, v).
+- Functions that save and load the correction.
+- A small tool that walks you through the slots and saves the result.
+- A change in `TrayCapPipeline`: apply the correction to the (u, v) of every cap, and add a `--correction-file` flag.
+
+**Do I need another task first?**
+No. It helps to have Task 1 done, so the tray corners are good.
+
+**How do I test without the camera?**
+Make up the "reported" positions: take real positions on a grid, and push them away from the middle of the picture, like a raised cap would be. Calibrate with 4 of them, and check that all 9 grid positions come out right.
+
+**How do I know it works?**
+- Calibrating with 4 marks gives every one of the 9 grid positions within 0.002 (0.2% of the tray).
+- Fewer than 4 marks gives a clear error message.
+- Save then load gives the same correction, and a missing file gives `None`.
+- With a correction file, the pipeline's (u, v) change as expected. With no file, nothing changes.
+- All the other tests in `tests/` still pass.
+
+**How do I push?**
+Branch `task3-height`.
+```
+git add vision/height_fix.py vision/calibrate_height.py vision/tray_object_pipeline.py tests/test_height_fix.py tests/test_frame_pipeline.py
+git commit -m "Task 3: correct cap positions for height"
+git push -u origin task3-height
+```
+
+**What changes with the real camera?**
+- Measure the tray's width and depth, and the real position of at least 4 rack slots (corners included). For each slot: millimeters from the tray's top-left corner, divided by the tray's width for `u` and by its depth for `v`.
+- Run `python vision/calibrate_height.py --camera-index 0 --real 0.15,0.15 0.85,0.15 0.85,0.85 0.15,0.85` with your own numbers. It asks you to put **one** cap in each slot, one at a time.
+- It prints how far each slot is off after the fix. Then test with caps in 9 or more other slots, and compare with the ruler. The pass number is the position error you agreed on in [Numbers to agree on](limitation.md#numbers-to-agree-on).
+- Commit `vision/cap_height.json`. If the tubes change length, calibrate again.
+
+<details>
+<summary><b>Code help</b> (click to open)</summary>
+
+**File:** `vision/height_fix.py`
+```python
+import json
+import cv2
+import numpy as np
+
+def fit_correction(measured, real):
+    """Two lists of (u, v), same length (at least 4) → 3 x 3 matrix."""
+
+def apply_correction(matrix, u, v):
+    """(u, v) → corrected (u, v)."""
+
+def save_correction(matrix, path="vision/cap_height.json"): ...
+def load_correction(path="vision/cap_height.json"):
+    """3 x 3 matrix, or None if the file is missing or broken."""
+```
+
+**Steps:**
+1. `fit_correction`: if there are fewer than 4 pairs, `raise ValueError("need at least 4 marks")`. Then `matrix, _ = cv2.findHomography(np.float32(measured), np.float32(real))`.
+2. `apply_correction`: `cv2.perspectiveTransform(np.float32([[[u, v]]]), matrix)[0, 0]`. Return two floats.
+3. `save_correction`: `json.dump({"matrix": matrix.tolist()}, f)`. `load_correction`: catch `OSError`, `ValueError`, `KeyError`, and return `None`.
+4. In `TrayCapPipeline.__init__`:
+   ```python
+   self.correction = load_correction(args.correction_file) if args.correction_file else None
+   ```
+   Import `load_correction` the way `vision/tray_object_pipeline.py` imports its other modules (try `from .height_fix import ...`, and if that fails, `from height_fix import ...`).
+5. In `process_frame`, right after `objects = self.object_tracker.update(detections)`:
+   ```python
+   if self.correction is not None:
+       fixed = []
+       for obj in objects:
+           u, v = apply_correction(self.correction, obj["u"], obj["v"])
+           fixed.append(dict(obj, u=u, v=v))
+       objects = fixed
+   ```
+6. In `parse_args`: `--correction-file`, default `"vision/cap_height.json"` (an empty value turns it off).
+7. The tool `vision/calibrate_height.py`:
+   - flags: `--camera-index`, `--url`, `--transport` (like the main program), and `--real` with one or more `u,v` values
+   - make `TrayCapPipeline(parse_args([... "--correction-file", ""]))`
+   - for each real position: `input("Put ONE cap in slot ... and press Enter")`, then feed frames for 2 seconds and take the **median** of the cap's (u, v). If there is not exactly one cap, say so and ask again.
+   - call `fit_correction`, print for each slot how far it is off after the fix, and call `save_correction`
+8. The pipeline tests in `tests/test_frame_pipeline.py` should not depend on a real file. In that file, replace every `parse_args([])` with `parse_args(["--correction-file", ""])`.
+
+**Test:** `tests/test_height_fix.py`
+```python
+import numpy as np, cv2
+import pytest
+from vision.height_fix import fit_correction, apply_correction, save_correction, load_correction
+from vision.tray_object_pipeline import TrayCapPipeline, parse_args
+
+GRID = [(a, b) for a in (0.15, 0.5, 0.85) for b in (0.15, 0.5, 0.85)]
+MARKS = [(0.15, 0.15), (0.85, 0.15), (0.85, 0.85), (0.15, 0.85)]
+
+def reported(u, v):
+    """What the pipeline reports for a cap on a tube: pushed away from the middle (0.5, 0.5)."""
+    return 0.5 + (u - 0.5) * 1.18 + 0.01, 0.5 + (v - 0.5) * 1.12 - 0.015
+
+def test_four_marks_fix_every_position():
+    matrix = fit_correction([reported(*m) for m in MARKS], MARKS)
+    for u, v in GRID:
+        fixed_u, fixed_v = apply_correction(matrix, *reported(u, v))
+        assert abs(fixed_u - u) < 0.002 and abs(fixed_v - v) < 0.002
+
+def test_too_few_marks():
+    with pytest.raises(ValueError):
+        fit_correction([(0.1, 0.1)] * 3, [(0.1, 0.1)] * 3)
+
+def test_save_and_load(tmp_path):
+    matrix = fit_correction([reported(*m) for m in MARKS], MARKS)
+    save_correction(matrix, tmp_path / "fix.json")
+    assert np.allclose(load_correction(tmp_path / "fix.json"), matrix)
+    assert load_correction(tmp_path / "missing.json") is None
+
+def picture():
+    img = np.full((480, 800, 3), 160, np.uint8)
+    cv2.rectangle(img, (100, 80), (700, 380), (30, 30, 30), -1)
+    cv2.circle(img, (300, 230), 30, (40, 40, 220), -1)                    # a red cap
+    return img
+
+def first_cap_u(flags):
+    pipeline = TrayCapPipeline(parse_args(flags))
+    now, result = 0.0, None
+    while now < 3.0:
+        result = pipeline.process_frame(picture(), now)
+        now += 0.1
+    return result.objects[0]["u"]
+
+def test_pipeline_applies_the_correction(tmp_path):
+    shift = np.array([[1, 0, 0.1], [0, 1, 0], [0, 0, 1]], np.float64)      # moves every u by +0.1
+    save_correction(shift, tmp_path / "fix.json")
+    plain = first_cap_u(["--correction-file", ""])
+    fixed = first_cap_u(["--correction-file", str(tmp_path / "fix.json")])
+    assert abs(fixed - plain - 0.1) < 0.001
+```
+
+</details>
+
+---
+
+## Task 4: Save cap detections
+
+![Task 4: Save cap detections](images/tasks/task-4.gif)
+
+**What's wrong now?**
+When the program finds a cap, it only **shows** it: a line on the screen. Screen lines scroll away, and nothing is saved. After a run we can't ask "where was the red cap at frame 1042?" or compare the camera's numbers with a ruler. ([Limitation 4](limitation.md#4-detections-are-not-saved))
+
+**What's the idea?**
+Two small ideas:
+1. A **record** is a short "card" with the facts about **one** cap. Every card has the same facts, with the same names, in the same order. So the code, the tests and your teammates all read it the same way.
+2. A **log file** is a notebook. Each card is written as **one line** at the **end** of the notebook. We never erase a line, we only add new ones at the end. Later you can open the notebook and read what happened.
+
+In Python, a card is a `dict`. A line in the log is that dict written as text (this text format is called JSON). For example, this card:
+
+```python
+{"frame": 1042, "time_ms": 1730000123456, "color": "red", "u": 0.412, "v": 0.688,
+ "center_x": 206.0, "center_y": 151.4, "box": [190, 135, 32, 33], "area": 780}
+```
+
+becomes this one line in the log file (it is the same text, on one line):
+
+```
+{"frame": 1042, "time_ms": 1730000123456, "color": "red", "u": 0.412, "v": 0.688, "center_x": 206.0, "center_y": 151.4, "box": [190, 135, 32, 33], "area": 780}
+```
+
+**What are the facts on a card?**
+
+| Name | What it means | Example |
+| --- | --- | --- |
+| `frame` | Which camera picture this cap was found in | `1042` |
+| `time_ms` | When that picture was taken (milliseconds) | `1730000123456` |
+| `color` | `"red"`, `"blue"`, `"purple"`, or `"unknown"` | `"red"` |
+| `u` | How far across the tray the cap is (0 = left edge, 1 = right edge) | `0.412` |
+| `v` | How far down the tray the cap is (0 = top edge, 1 = bottom edge) | `0.688` |
+| `center_x`, `center_y` | The cap's middle, in pixels | `206.0`, `151.4` |
+| `box` | The box around the cap: x, y, width, height in pixels | `[190, 135, 32, 33]` |
+| `area` | How big the cap looks, in pixels | `780` |
+
+**What do I build?**
+Two small functions in a new file:
+- `make_record(frame, time_ms, obj)`: takes **one** cap that the pipeline found (`obj`) and returns its card (the dict above).
+- `write_log(record, path)`: adds the card as **one line** at the end of the log file.
+
+Where does `obj` come from? The pipeline gives a list of caps in `result.objects`. Each item of that list is one `obj`.
+
+**What if the color isn't red, blue, or purple?**
+The pipeline only reports these 3 colors today. But if `color` is anything else, write `"unknown"` on the card. Don't throw the cap away: the log keeps it, so a person can look at it later.
+
+**Do I need another task first?**
+No. You can build and test everything with made-up caps, so you can start right away.
+
+**How do I test without the camera?**
+Write a fake cap by hand in your test, in the same shape the pipeline gives: `color`, `u`, `v`, `center_x`, `center_y`, `box`, `area`. For example, a red cap at `u = 0.412` and `v = 0.688`. You don't need a camera or OpenCV.
+
+**How do I know it works?**
+- Write 3 cards. Open the log file: it has exactly 3 lines.
+- Read each line back. It has every name from the table, and no extra names.
+- A cap with color `"green"` is written as `"unknown"`.
+
+**How do I push?**
+Branch `task4-records`.
+```
+git add vision/records.py tests/test_records.py
+git commit -m "Task 4: records + log"
+git push -u origin task4-records
+```
+
+**What changes with the real camera?**
+Nothing in the two functions. In `main()`, after the program finds the caps in each frame, call `make_record` and `write_log` once for **each** cap in `result.objects`. Add a `--log-file` flag so you can choose the file. Add `logs/` to `.gitignore`, so run data is not committed.
 
 <details>
 <summary><b>Code help</b> (click to open)</summary>
@@ -243,15 +540,21 @@ Nothing in the functions. In `main()`, call `make_record` and `write_log` for ea
 COLORS = ("red", "blue", "purple")
 
 def make_record(frame, time_ms, obj):
-    """obj = one cap dict from the pipeline → record dict. Other color → "unknown"."""
+    """obj = one cap from the pipeline → the card (a dict). Other color → "unknown"."""
 
 def write_log(record, path="logs/detections.jsonl"):
-    """Add the record as 1 JSON line at the end of the file."""
+    """Add the card as one line at the end of the file."""
 ```
 
 **Steps:**
-1. `make_record`: build the dict. Field names exactly: `frame, time_ms, color, u, v, center_x, center_y, box, area`. Round `u`, `v` to 3 decimals, `center_x`, `center_y` to 1. Make `box` a list of ints (JSON has no tuples).
-2. `write_log`: make the folder if missing, `open(path, "a")`, write `json.dumps(record) + "\n"`.
+1. `make_record`: build the dict with exactly these names: `frame, time_ms, color, u, v, center_x, center_y, box, area`.
+   - Round `u` and `v` to 3 decimals, and `center_x` and `center_y` to 1 decimal (`round(value, 3)`).
+   - Make `box` a list of ints: `[int(n) for n in obj["box"]]`. JSON has no tuples.
+   - For `color`, use `obj["color"] if obj["color"] in COLORS else "unknown"`.
+2. `write_log`:
+   - Make the folder if it is missing (`os.makedirs(folder, exist_ok=True)`).
+   - Open the file with `open(path, "a")`. The `"a"` means **append**: new text goes at the end, and old lines stay.
+   - Write `json.dumps(record) + "\n"`. `json.dumps` turns the dict into text, and `"\n"` ends the line.
 
 **Test:** `tests/test_records.py`
 ```python
@@ -277,270 +580,6 @@ def test_log_lines(tmp_path):
 
 def test_unknown_color():
     assert fake(0, "green")["color"] == "unknown"
-```
-
-</details>
-
----
-
-## Task 3: Check cap positions
-
-![Task 3: Check cap positions](images/tasks/task-3.gif)
-
-**What's wrong now?**
-The earlier tasks check individual pieces of the system, but pieces that work on their own can still fail when connected together. For example, coordinate conversion, slot assignment, and record creation may use different assumptions about positions. This task checks the whole chain against known measurements. ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet), "Done when")
-
-**What's the idea?**
-Place caps in slots whose locations are known, then process them through the complete system: detect each cap in the image, convert its pixel location into millimeters, decide which slot it belongs to, and create its record (Task 2). Compare the output coordinates and assigned slot with the known reference values. Save a table with one pass or fail result for each cap.
-
-**What do I build?**
-Write a function that compares the detection records with the reference measurements and produces one row of results for each cap. Then write a function that saves these rows to a CSV file, which can be opened and reviewed as a table.
-
-**Do I need another task first?**
-This test checks the record and position outputs together. Task 2 records only hold what the pipeline gives today (`color`, `u`, `v`, pixels, `box`, `area`). This task needs records that also have `x_mm`, `y_mm` and `slot`. Those fields come from the pixel-to-mm step and the slot map ([Limitation 1](limitation.md#1-the-robot-cant-use-the-cameras-positions-yet)). Until they exist, use clearly marked sample records that already contain them, then replace them with the real implementation.
-
-**How do I test without the camera?**
-Create a reference CSV with nine slot names and their known coordinates. Use a known synthetic camera mapping to convert those positions into fake pixels. The pipeline should recover the expected coordinates and assign each cap to the correct slot.
-
-**How do I know it works?**
-With the fake data, all nine caps should pass when the accepted position error is set to 5 mm. To confirm that the check can also catch a problem, shift one cap's pixel by 40 pixels, which is about 10 mm in the example mapping. That cap should fail while the others continue to pass.
-
-**How do I push?**
-Branch `task3-position-test`.
-```
-git add vision/position_test.py tests/test_position_test.py tests/fake_data/ruler.csv
-git commit -m "Task 3: full position test"
-git push -u origin task3-position-test
-```
-
-**What changes with the real camera and arm?**
-For the real-hardware check, place caps in at least nine slots distributed across the rack, including corners, edges, and the center. Use the measured slot map and tape-measure measurements as the reference. Save the results to `docs/results/position_test_<date>.csv`, replacing `<date>` with the test date. Limitation 1 is complete when every tested cap is within the team's agreed position tolerance and is assigned to the correct slot.
-
-<details>
-<summary><b>Code help</b> (click to open)</summary>
-
-**File:** `vision/position_test.py`
-```python
-def compare(records, ruler, tolerance_mm):
-    """→ 1 row per cap: slot, camera x/y, ruler x/y, error mm, right slot?, pass?"""
-
-def save_table(rows, path):
-    """Rows → CSV file."""
-```
-
-**Fake ruler:** `tests/fake_data/ruler.csv`, 9 slots spread over the rack:
-```
-slot,x_mm,y_mm
-A1,200,-50
-A6,200,50
-D1,260,-50
-...
-```
-
-**Fake cap pixels:** use a known camera mapping (`H_true`) to generate pixel coordinates:
-```python
-px = cv2.perspectiveTransform(np.float32([[[x_mm, y_mm]]]), H_true)[0][0]
-```
-
-**Test:** `tests/test_position_test.py`
-- `tolerance_mm=5`
-- All 9 rows pass.
-- 1 pixel moved by 40 → that row fails.
-
-</details>
-
----
-
-## Task 4: Check the tray outline
-
-![Task 4: Check the tray outline](images/tasks/task-4.gif)
-
-**What's wrong now?**
-The program finds the tray by detecting its dark outline and estimating the four corners. A cap, hand, or shadow near the edge can make one or more corners appear to be in the wrong place. Since later position calculations use those corners as a reference, a bad outline can shift the calculated location of every cap. ([Limitation 3](limitation.md#3-objects-near-the-trays-edge-can-bend-its-outline), also part of [Limitation 2](limitation.md#2-the-robot-arm-can-stop-the-camera-from-finding-the-tray))
-
-**What's the idea?**
-Keep the most recent outline that passed the checks. Each time a new outline is detected, compare its corners and shape with that trusted outline. If the corners have shifted only a little, classify it as **same** and continue using it. If all four corners have shifted together while the shape remains consistent, classify it as **moved**, accept the new outline, and warn the operator that the tray may have moved. If the corners shift unevenly or the shape changes, classify it as **bent**; this may mean something is covering the tray edge, so keep the previous trusted outline. Also wait for detections to become stable across several frames before trusting them, since a changing outline may mean something is still moving.
-
-**What do I build?**
-Build a function that compares a newly detected outline with the last trusted one and returns `"same"`, `"moved"`, or `"bent"`. Build a second function that examines the most recent five outlines and reports whether their corner positions are stable enough to use.
-
-**What is an "outline" in the code?**
-In this task, an outline is simply a list of four corner coordinates measured in image pixels. For example, `[(100, 80), (700, 80), (700, 380), (100, 380)]` gives the four corners of a rectangular tray in one image.
-
-**Do I need another task first?**
-No.
-
-**How do I test without the camera?**
-You can test the classification logic without a camera by creating outline coordinates yourself. Move all four corners by the same amount to represent a tray that has moved, or move only one corner to represent a distorted outline. You can also use OpenCV to draw a dark tray on a grey background, add a dark shape at one corner, and run the existing tray finder on the generated image before checking its outline.
-
-**How do I know it works?**
-Check several example cases: a 2-pixel change in the corners should be classified as `"same"`; a 40-pixel shift of all four corners should be `"moved"`; and a 40-pixel shift of just one corner should be `"bent"`. A generated image with a dark shape on a tray corner should also produce a `"bent"` result. Finally, a sequence of outlines that jumps back and forth should be reported as not stable.
-
-**How do I push?**
-Branch `task4-outline-check`.
-```
-git add vision/outline_check.py tests/test_outline_check.py
-git commit -m "Task 4: outline check"
-git push -u origin task4-outline-check
-```
-
-**What changes with the real camera?**
-For the camera check, place a cap at each tray corner and a dark object against each side, confirming that each obstruction is classified as `"bent"`. Slide the tray by 3 cm and confirm that the new outline is classified as `"moved"`. Then move a cap across the tray edge while capturing frames and confirm that outlines are not trusted until they become stable. Limitation 3 is complete when these checks work with the real tray and camera.
-
-<details>
-<summary><b>Code help</b> (click to open)</summary>
-
-**File:** `vision/outline_check.py`
-```python
-def check_outline(new, last_good, ref_ratio, drift_px=10, shape_pct=10):
-    """2 outlines (4 corners each, pixels) → "same", "moved" or "bent"."""
-
-def is_still(recent_outlines, drift_px=10):
-    """Last 5 outlines → True if none moved more than drift_px from the one before."""
-```
-- `ref_ratio` = long side ÷ short side of a clean outline at start, in pixels. (Not the real tray's mm: the camera angle changes the shape.)
-- `drift_px`, `shape_pct`: final values from [numbers to agree on](limitation.md#numbers-to-agree-on).
-
-**Steps:**
-1. Shape: long ÷ short side of `new` (average the 2 opposite sides). Differs from `ref_ratio` by more than `shape_pct` % → `"bent"`.
-2. How far each corner moved vs `last_good`. All ≤ `drift_px` → `"same"`.
-3. All 4 corners moved about the same way (differences ≤ `drift_px`) → `"moved"`. Otherwise → `"bent"`.
-
-**Fake data:**
-```python
-import numpy as np, cv2
-from vision.tray_object_pipeline import find_tray_corners
-
-GOOD = np.float32([[100, 80], [700, 80], [700, 380], [100, 380]])   # ratio 2.0
-ARGS = (0, 179, 0, 0, 130, 85, 0.04, 9)                              # pipeline defaults
-
-def picture():
-    img = np.full((480, 800, 3), 160, np.uint8)                   # grey table
-    cv2.rectangle(img, (100, 80), (700, 380), (30, 30, 30), -1)   # black tray
-    return img
-```
-
-**Test:** `tests/test_outline_check.py`
-```python
-def test_same():  assert check_outline(GOOD + 2, GOOD, 2.0) == "same"
-def test_moved(): assert check_outline(GOOD + 40, GOOD, 2.0) == "moved"
-
-def test_bent():
-    new = GOOD.copy(); new[1] += (40, -20)
-    assert check_outline(new, GOOD, 2.0) == "bent"
-
-def test_dark_blob_on_corner():               # find_tray_corners moves that corner ~40 px
-    img = picture()
-    cv2.circle(img, (700, 80), 40, (40, 40, 40), -1)
-    new, _ = find_tray_corners(img, *ARGS)
-    assert check_outline(new, GOOD, 2.0) == "bent"
-
-def test_not_still():
-    assert not is_still([GOOD, GOOD + 15, GOOD, GOOD + 15, GOOD])
-    assert is_still([GOOD] * 5)
-```
-
-</details>
-
----
-
-## Task 5: Run the pick cycle
-
-![Task 5: Run the pick cycle](images/tasks/task-5.gif)
-
-**What's wrong now?**
-The arm can appear in the camera image while the vision system is trying to locate the tray. A dark part of the arm may blend into the tray's dark outline and make the tray difficult to detect. A light part of the arm that covers a tray corner may cause the corner to be placed incorrectly. ([Limitation 2](limitation.md#2-the-robot-arm-can-stop-the-camera-from-finding-the-tray))
-
-**What's the idea?**
-The loop should take each picture only after the arm has moved to a parked position outside the camera's view. During each cycle, first park the arm and capture an image. Find the tray and check its outline using Task 6. If the outline is bent, skip that cycle and wait for a usable image; if it has moved, warn the operator. When the outline is acceptable, find the caps, move to one, pick it up, and drop it into the appropriate bin. Then repeat the cycle until the requested number of picks is complete or no caps remain.
-
-**What do I build?**
-Implement the cycle in one function that receives the arm, camera, and functions for finding the tray, finding caps, and checking the outline. Passing these parts into the function makes it possible for tests to substitute fake hardware and simple test functions, while the real run can provide the actual camera and arm controls.
-
-**Do I need another task first?**
-The real pick loop should use the outline check from Task 6. You can start testing the rest of the loop before that task is finished by passing in a temporary check function that always returns `"same"`. Replace the temporary function with the real check when it is ready.
-
-**How do I test without the arm?**
-Create a fake arm whose methods only add commands such as `park`, `move`, and `pick` to a list; it should not move any hardware. Create a fake camera that returns saved images one at a time. Together, these fakes let you inspect the order of actions without connecting to the robot.
-
-**How do I know it works?**
-For a valid cap, check that the loop parks the arm, captures an image, checks the outline, and then commands the arm to move, pick, and drop the cap. Confirm that the arm is parked again when the loop finishes. If the outline check returns `"bent"`, the loop must skip picking during that cycle. If it returns `"moved"`, the loop should issue a warning so the operator knows the tray position may have changed.
-
-**How do I push?**
-Branch `task5-pick-loop`.
-```
-git add vision/pick_loop.py tests/test_pick_loop.py
-git commit -m "Task 5: pick loop"
-git push -u origin task5-pick-loop
-```
-
-**What changes with the real arm?**
-For the real hardware, create an arm adapter that implements the four commands used by the loop—`park`, `move_to`, `pick`, and `drop`—and connects them to the arm controller. Cover any arm parts that enter the camera's view with light, matte tape, such as white or light grey tape, to make them easier to distinguish from the tray. Test the loop by parking the arm and sliding the tray, then confirm that the next image causes a movement warning. Put the arm over a tray corner and confirm that the system retains its last trusted outline, and check that arm parts are not classified as caps. Limitation 2 is complete when these checks pass.
-
-<details>
-<summary><b>Code help</b> (click to open)</summary>
-
-**File:** `vision/pick_loop.py`
-```python
-def run(arm, camera, find_tray, find_caps, check, picks=10):
-    """The loop. Everything comes in as arguments → easy to fake."""
-```
-
-**Loop, in pseudo-code:**
-```
-repeat picks times:
-    arm.park()
-    picture = camera.picture()
-    outline = find_tray(picture)
-    result = check(outline, last_good)
-    "bent"  → print "tray covered, waiting", skip this round
-    "moved" → print "WARNING: tray moved"
-    last_good = outline
-    caps = find_caps(picture, outline)        # list of (x, y, z, color)
-    no caps → stop
-    arm.move_to(x, y, z) → arm.pick() → arm.drop(color)
-arm.park()
-```
-
-**Fake arm + camera:**
-```python
-class FakeArm:
-    def __init__(self):           self.log = []
-    def park(self):               self.log.append("park")
-    def move_to(self, x, y, z):   self.log.append("move")
-    def pick(self):               self.log.append("pick")
-    def drop(self, color):        self.log.append("drop " + color)
-
-class FakeCamera:
-    def __init__(self, pictures): self.pictures = list(pictures)
-    def picture(self):            return self.pictures.pop(0)
-```
-Later also: drawn pictures (see Task 6) with a light grey "arm" over a corner: `cv2.rectangle(img, (640, 0), (760, 120), (200, 200, 200), -1)`.
-
-**Test:** `tests/test_pick_loop.py`
-```python
-from vision.pick_loop import run
-
-def go(answers):
-    arm, camera = FakeArm(), FakeCamera([None] * len(answers))
-    answers = iter(answers)
-    run(arm, camera,
-        find_tray=lambda img: "outline",
-        find_caps=lambda img, outline: [(200, 0, 96, "red")],
-        check=lambda new, last: next(answers),
-        picks=3)
-    return arm.log
-
-def test_bent_means_no_pick():
-    assert go(["same", "bent", "same"]) == [
-        "park", "move", "pick", "drop red",
-        "park",                                  # bent → no pick
-        "park", "move", "pick", "drop red",
-        "park"]
-
-def test_moved_warns(capsys):
-    go(["same", "moved", "same"])
-    assert "moved" in capsys.readouterr().out
 ```
 
 </details>

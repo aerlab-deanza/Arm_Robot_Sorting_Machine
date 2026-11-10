@@ -31,7 +31,7 @@ Each step has a short looping animation, with the explanation written in under t
 **Algorithms:**
 
 - **BGR-to-HSV (`cvtColor`)** changes how colors are stored. This makes color and brightness easier to check separately.
-- **Color thresholding (`inRange`)** marks dark, low-saturation pixels. Hue is ignored because black has no stable hue.
+- **Color thresholding (`inRange`)** marks dark pixels. Hue and saturation are ignored: black has no stable hue, and next to a bright board the camera can make the black tray look dark blue and quite colorful.
 - **Morphological closing (`morphologyEx`)** fills small gaps in the mask.
 
 **Why:** Separate the tray from the table and background.
@@ -42,7 +42,7 @@ Why HSV instead of red, green, blue, and why red needs two ranges:
 
 The pass/fail test on each pixel:
 
-![Each pixel passes or fails the brightness and saturation test](images/pipeline/02b-threshold.gif)
+![Each pixel passes or fails the brightness test](images/pipeline/02b-threshold.gif)
 
 **Learn (beginner-friendly):**
 - [HSL and HSV (Wikipedia)](https://en.wikipedia.org/wiki/HSL_and_HSV): the color wheel pictures show what hue, saturation and value mean.
@@ -52,7 +52,7 @@ The pass/fail test on each pixel:
 
 White = selected dark pixels. Black = ignored pixels. Objects leave holes in the tray threshold. Other dark surfaces may also pass; step 3 checks their shape.
 
-Default limits: brightness 0-85, saturation 0-130. Adjust for the lighting.
+Default limit: brightness 0-85. Saturation is not limited. If a dark floor or chair joins the tray and you see "TRAY NOT FOUND", give the program a search region, for example `--tray-region 0.05,0.28,0.95,0.97` (left, top, right, bottom, as fractions of the picture). It is drawn as an orange rectangle in the camera window. Everything outside it is ignored. Keep a few pixels of room between the region and the tray.
 
 ## 3. Turn tray pixels into an outline
 
@@ -102,7 +102,6 @@ The tracker keeps the last outline through up to 8 missed frames. Large jumps ne
 - A hand or the arm hiding the tray doesn't unlock it.
 - It unlocks by itself only if the same-sized tray shows up clearly somewhere else for about 1 second. That means the tray really moved. Glare changes the tray's shape, so it doesn't count.
 - Press `r` to find the tray again at any time.
-- The "did it move?" check is simple for now. [Task 4](task_delegation.md) (`check_outline`) can replace it.
 
 **Learn (beginner-friendly):**
 - [Exponential smoothing (Wikipedia)](https://en.wikipedia.org/wiki/Exponential_smoothing): the "blend new with old" idea. Our `new_outline_weight` is the smoothing factor.
@@ -147,7 +146,9 @@ The skewed tray becomes a rectangle. See the detection view in step 7.
 **Algorithms and filters:**
 
 - **HSV thresholding (`inRange`)** marks red, blue, and purple pixels. Blue means dark blue only: on our camera, glare on the dark tray looks light blue.
-- **Brightness floor that follows the tray.** The camera's color balance drifts: the black tray has looked yellowish, and later navy blue (as blue as a blue cap). So each frame, the program measures the tray's typical brightness. A pixel only counts as a cap color if it's at least 25 brighter than the tray.
+- **Brightness floor that follows the tray.** The camera's color balance drifts: the black tray has looked yellowish, and later navy blue (as blue as a blue cap). So each frame, the program measures the tray's typical brightness. A pixel only counts as a cap color if it's at least 45 brighter than the tray. (Glare on a navy tray was only about 25 brighter, so a smaller margin let it through as "blue".)
+- **Red under a blue color cast.** A blue cast can move the red cap's hue to 165-176, which is inside the purple range. Strongly colored pixels (saturation 170 or more) in that hue band count as red. The purple cap is less colorful there, so it stays purple.
+- **Edge margin.** Objects whose center is within 4% of the tray picture's edge are ignored (`--object-edge-margin`). Glare shows up at the edges, and the rack stays away from them.
 - **Morphological opening** removes small specks.
 - **Morphological closing** joins small gaps in a colored region.
 - **Contour detection (`findContours`)** traces each region. The program measures its size and center.
@@ -183,7 +184,7 @@ Steady boxes: the tracker shows a cap only after it is seen in 3 of the last 5 f
 
 ![Each frame is detected from scratch; the tracker keeps the box steady and ignores a one-frame speck](images/pipeline/07d-steady-boxes.gif)
 
-The green boxes mark objects (after tracking). Each label shows the cap's color and its position `(u, v)`, and it follows the cap when the cap moves. Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
+The green boxes mark objects (after tracking). Each label shows the cap's color and its position `(u, v)`, and it follows the cap when the cap moves. The label, the box line and the center dot grow and shrink with the size of the box. This picture is enlarged to at least 360 pixels on its smaller side before the text is drawn (`MIN_VIEW_SIDE`), so the text stays crisp when the tray is small. Detection still runs on the original size. Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
 
 The combined color mask selects the objects as white. The tray stays black.
 
@@ -195,14 +196,10 @@ The combined color mask selects the objects as white. The tray stays black.
 
 ![Divide by the image width and height to get positions from 0 to 1](images/pipeline/08-normalized.gif)
 
-Values describe the tray image, not robot coordinates in millimeters. No height, grip angle, or arm commands yet.
+Values describe the tray image, not robot coordinates in millimeters. They are exact for things lying on the tray surface. A cap on a tube is above the surface, so it is shifted, more towards the edges ([limit 3](limitation.md#3-a-cap-above-the-tray-is-measured-in-the-wrong-place)). No height, grip angle, or arm commands yet.
 
 ## Recap and next steps
 
 The whole pipeline in about 50 seconds, from camera picture to cap color and position:
 
 ![Recap: dark-pixel threshold, tray outline and corners, steady outline, mask, straighten, red/blue/purple blobs, boxes and centers, steady boxes, positions from 0 to 1](images/pipeline/09a-recap.gif)
-
-What's still needed before the robot can pick. Details in [pipeline limits](limitation.md).
-
-![What works today and what is still needed](images/pipeline/09b-next.gif)

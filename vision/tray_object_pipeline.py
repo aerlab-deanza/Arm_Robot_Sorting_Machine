@@ -26,7 +26,7 @@ import time
 # imported as vision.tray_object_pipeline. camera must load first: it sets the
 # FFmpeg options before OpenCV loads.
 try:
-    from .camera import open_capture
+    from .camera import lock_camera_settings, open_capture
     from .tray import (  # noqa: F401  (re-exported so old imports keep working)
         TrayLock, TrayOutlineSmoother, find_tray_corners, order_corners,
         straighten_tray, tray_moved,
@@ -35,7 +35,7 @@ try:
         ObjectTracker, find_objects, make_color_masks, min_cap_brightness,
     )
 except ImportError:
-    from camera import open_capture
+    from camera import lock_camera_settings, open_capture
     from tray import (  # noqa: F401
         TrayLock, TrayOutlineSmoother, find_tray_corners, order_corners,
         straighten_tray, tray_moved,
@@ -197,6 +197,7 @@ class TrayCapPipeline:
                 args.tray_max_value,
                 args.tray_min_area_ratio,
                 args.close_kernel,
+                region=args.tray_region,
             )
             self.last_tray_check = now
             self.last_dark_pixel_mask = dark_pixel_mask
@@ -204,6 +205,13 @@ class TrayCapPipeline:
             detected_corners = None
             dark_pixel_mask = self.last_dark_pixel_mask
         overview = frame.copy()
+        if args.tray_region is not None:
+            frame_h, frame_w = frame.shape[:2]
+            region = args.tray_region
+            cv2.rectangle(
+                overview, (int(region[0] * frame_w), int(region[1] * frame_h)),
+                (int(region[2] * frame_w), int(region[3] * frame_h)), (0, 200, 255), 1,
+            )
 
         # First sighting: wait a moment before trusting the tray.
         if (self.tray_smoother.outline is None and not self.tray_lock.locked and
@@ -269,33 +277,51 @@ class TrayCapPipeline:
             straight_tray, args.object_min_saturation, args.object_min_value
         )
         detections = find_objects(
-            straight_tray, masks, args.object_min_area_ratio, args.object_max_aspect
+            straight_tray, masks, args.object_min_area_ratio, args.object_max_aspect,
+            args.object_edge_margin,
         )
         # Boxes, centers and the printout use the steady objects.
         objects = self.object_tracker.update(detections)
 
-        detection_view = straight_tray.copy()
+        # Draw on an enlarged copy, so the text is crisp even when the tray
+        # picture is small. The detection itself ran on the original.
+        zoom = float(np.clip(MIN_VIEW_SIDE / min(straight_tray.shape[:2]), 1.0, 8.0))
+        if zoom > 1.0:
+            detection_view = cv2.resize(straight_tray, None, fx=zoom, fy=zoom,
+                                        interpolation=cv2.INTER_CUBIC)
+        else:
+            detection_view = straight_tray.copy()
+        view_height = detection_view.shape[0]
+        cv2.putText(
+            detection_view, "objects: {}".format(len(objects)), (8, 34),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2,
+        )
         # Show the brightness numbers, to debug false colors on the tray.
         cv2.putText(
             detection_view,
             "tray brightness {}  cap needs > {}".format(
                 tray_brightness, cap_min_brightness
             ),
-            (8, detection_view.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+            (8, view_height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
             (255, 255, 255), 1,
         )
         for obj in objects:
-            x, y, box_w, box_h = obj["box"]
-            cv2.rectangle(detection_view, (x, y), (x + box_w, y + box_h), (0, 255, 0), 2)
-            cv2.circle(detection_view, (int(obj["center_x"]), int(obj["center_y"])),
-                       5, (255, 0, 0), -1)
+            x, y, box_w, box_h = (int(round(value * zoom)) for value in obj["box"])
+            # Everything drawn on a cap grows and shrinks with its box.
+            thickness = 1 if min(box_w, box_h) < 50 else 2
+            cv2.rectangle(detection_view, (x, y), (x + box_w, y + box_h), (0, 255, 0), thickness)
+            cv2.circle(detection_view, (int(obj["center_x"] * zoom), int(obj["center_y"] * zoom)),
+                       max(2, min(box_w, box_h) // 10), (255, 0, 0), -1)
             # The label follows the cap, so it shows the live position (u, v).
             text = "{} ({:.2f}, {:.2f})".format(obj["color"], obj["u"], obj["v"])
-            (text_width, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            font_scale = label_scale(text, box_w)
+            label_thickness = 1 if font_scale < 0.55 else 2
+            (text_width, text_height), _ = cv2.getTextSize(
+                text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, label_thickness)
             text_x = max(0, min(x, detection_view.shape[1] - text_width - 4))
             cv2.putText(
-                detection_view, text, (text_x, max(20, y - 6)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
+                detection_view, text, (text_x, max(text_height + 4, y - 6)),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), label_thickness,
             )
         color_mask = np.zeros(straight_tray.shape[:2], dtype=np.uint8)
         for mask in masks.values():
@@ -303,6 +329,25 @@ class TrayCapPipeline:
         return FrameResult(overview, dark_pixel_mask, True, tray_mask, tray_only,
                            detection_view, color_mask, objects,
                            tray_state="locked" if self.tray_lock.locked else "finding")
+
+
+# The picture with the boxes is enlarged until its smaller side is at least this many
+# pixels, so the text drawn on it is crisp.
+MIN_VIEW_SIDE = 360
+
+
+def label_scale(text, box_width):
+    """Pick a font size so a label is about 1.6 times as wide as its box.
+
+    Args:
+        text: The label text.
+        box_width: Width of the cap's box, in pixels.
+
+    Returns:
+        The OpenCV font scale, between 0.3 (small caps) and 1.0 (big caps).
+    """
+    (width_at_one, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
+    return float(np.clip(1.6 * box_width / width_at_one, 0.3, 1.0))
 
 
 def show_results(frame, result):
@@ -333,6 +378,31 @@ def show_results(frame, result):
     cv2.imshow("Image restricted to tray", tray_only)
     cv2.imshow("Rectified tray / detected objects", detection_view)
     cv2.imshow("Colored-object mask", color_mask)
+
+
+def tray_region(text):
+    """Read a ``--tray-region`` value such as ``0.05,0.3,0.95,0.95``.
+
+    Args:
+        text: Four numbers between 0 and 1, separated by commas: left, top,
+            right, bottom.
+
+    Returns:
+        A tuple of four floats ``(left, top, right, bottom)``.
+
+    Raises:
+        argparse.ArgumentTypeError: If the text is not four numbers that make
+            a rectangle with left < right and top < bottom.
+    """
+    try:
+        left, top, right, bottom = [float(part) for part in text.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "use four numbers: left,top,right,bottom (for example 0.05,0.3,0.95,0.95)"
+        )
+    if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
+        raise argparse.ArgumentTypeError("need 0 <= left < right <= 1 and 0 <= top < bottom <= 1")
+    return left, top, right, bottom
 
 
 def result_to_json(frame_number, time_ms, result):
@@ -387,9 +457,15 @@ def parse_args(argv=None):
         help="Camera index (on this setup: 0=USB camera, 1=laptop camera)",
     )
     parser.add_argument("--transport", choices=("auto", "tcp", "udp"), default="auto")
-    # Black has no stable hue. Ignore hue and select dark, low-saturation pixels.
-    # In HSV, "value" means brightness (0-255).
-    parser.add_argument("--tray-max-saturation", type=int, default=130)
+    # Black has no stable hue, and next to a very bright object (a white board)
+    # the camera can make the black tray look dark blue and quite colorful. So
+    # the tray is found by brightness only. In HSV, "value" means brightness (0-255).
+    parser.add_argument("--tray-max-saturation", type=int, default=255,
+                        help="Highest saturation counted as tray (default 255 = any)")
+    parser.add_argument("--tray-region", type=tray_region, default=None,
+                        help="Search for the tray only inside this part of the picture, "
+                             "as fractions: left,top,right,bottom (for example "
+                             "0.05,0.3,0.95,0.95). Ignores the floor, chairs and people")
     parser.add_argument("--tray-max-value", type=int, default=85,
                         help="Brightest brightness counted as tray (0-255)")
     parser.add_argument("--tray-min-area-ratio", type=float, default=0.04,
@@ -412,6 +488,13 @@ def parse_args(argv=None):
                         help="Smallest cap, as a fraction of the tray image area")
     parser.add_argument("--object-max-aspect", type=float, default=1.9,
                         help="Reject elongated color blobs (default: 1.9)")
+    parser.add_argument("--object-edge-margin", type=float, default=0.04,
+                        help="Ignore objects whose center is this close to the tray's edge, "
+                             "as a fraction of the tray (default 0.04; 0 = keep all). "
+                             "Glare shows up at the edges")
+    parser.add_argument("--lock-camera", action="store_true",
+                        help="USB camera only: freeze automatic white balance and exposure "
+                             "after a short warm-up, so the picture stops changing color")
     return parser.parse_args(argv)
 
 
@@ -419,8 +502,8 @@ def main():
     """Run the live pipeline: read frames, find the tray and caps, show them.
 
     Keys in a preview window: ``q`` quits, ``r`` forgets the locked tray
-    outline and finds the tray again. Once per second, the steady objects
-    are printed with their color and tray position.
+    outline and finds the tray again. Once per second, one JSON line (see
+    result_to_json) is printed with the tray state and the steady caps.
 
     With ``--no-gui`` no windows open. Each frame prints one JSON line (see
     result_to_json) to stdout, and every other message goes to stderr, so
@@ -436,6 +519,11 @@ def main():
         sys.stdout = sys.stderr   # all other messages go to stderr
     source = args.camera_index if args.camera_index is not None else args.url
     video = open_capture(source, args.transport)
+    if args.lock_camera:
+        if isinstance(source, int):
+            print("Camera settings: {}".format(lock_camera_settings(video)), flush=True)
+        else:
+            print("--lock-camera works only with a USB camera (--camera-index).", flush=True)
     print("Reading {}. {}".format(
         source, "Press Ctrl+C to quit." if args.no_gui else "Press q in a preview window to quit."
     ))
@@ -469,13 +557,7 @@ def main():
 
             show_results(frame, result)
             if result.tray_found and now - last_report >= 1.0:
-                print("Objects detected: {}".format(len(result.objects)))
-                for obj in result.objects:
-                    print(
-                        "  {} center_norm=({:.3f},{:.3f}) area={:.0f}".format(
-                            obj["color"], obj["u"], obj["v"], obj["area"]
-                        )
-                    )
+                print(result_to_json(frame_number, int(time.time() * 1000), result))
                 last_report = now
 
             key = cv2.waitKey(1) & 0xFF

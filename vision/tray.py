@@ -24,12 +24,13 @@ def order_corners(points):
 
 
 def find_tray_corners(frame, min_hue, max_hue, min_saturation, min_brightness,
-                      max_saturation, max_brightness, min_area_ratio, gap_fill_size):
+                      max_saturation, max_brightness, min_area_ratio, gap_fill_size,
+                      region=None):
     """Find the dark tray in a camera frame and return its four corners.
 
-    Keeps pixels inside the given HSV limits (dark, not very colorful), joins
-    small gaps, and picks the biggest, most rectangular dark shape that does
-    not touch the image border.
+    Keeps pixels inside the given HSV limits (dark), joins small gaps, and
+    picks the biggest, most rectangular dark shape that does not touch the
+    border of the image (or of the search region, if one is given).
 
     Args:
         frame: Camera image, BGR, shape (height, width, 3).
@@ -42,6 +43,11 @@ def find_tray_corners(frame, min_hue, max_hue, min_saturation, min_brightness,
         min_area_ratio: Smallest tray size, as a fraction of the frame area.
         gap_fill_size: Size in pixels of the shape used to close small gaps
             in the dark-pixel mask. Raised to an odd number of at least 3.
+        region: Optional search region ``(left, top, right, bottom)`` as
+            fractions of the frame (0-1). Everything outside it is ignored,
+            so a dark floor or chair can't join the tray. The region acts
+            like the image border: a shape touching it is rejected. None
+            searches the whole frame.
 
     Returns:
         A tuple ``(corners, dark_pixel_mask)``. ``corners`` is a 4 x 2 float32
@@ -55,6 +61,14 @@ def find_tray_corners(frame, min_hue, max_hue, min_saturation, min_brightness,
         np.array([min_hue, min_saturation, min_brightness], dtype=np.uint8),
         np.array([max_hue, max_saturation, max_brightness], dtype=np.uint8),
     )
+    height, width = frame.shape[:2]
+    left, top, right, bottom = 0, 0, width, height
+    if region is not None:
+        left, top = int(region[0] * width), int(region[1] * height)
+        right, bottom = int(region[2] * width), int(region[3] * height)
+        inside = np.zeros_like(dark_pixel_mask)
+        inside[top:bottom, left:right] = 255
+        dark_pixel_mask = cv2.bitwise_and(dark_pixel_mask, inside)
     kernel_size = max(3, gap_fill_size | 1)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     dark_pixel_mask = cv2.morphologyEx(dark_pixel_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
@@ -63,7 +77,6 @@ def find_tray_corners(frame, min_hue, max_hue, min_saturation, min_brightness,
         dark_pixel_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
     frame_area = float(frame.shape[0] * frame.shape[1])
-    height, width = frame.shape[:2]
     border = max(4, int(min(height, width) * 0.008))
     candidates = []
     for contour in contours:
@@ -74,9 +87,9 @@ def find_tray_corners(frame, min_hue, max_hue, min_saturation, min_brightness,
         x, y, box_width, box_height = cv2.boundingRect(contour)
         # Bright windows and monitor areas often touch the image border. A
         # tray clipped by the frame is also unsafe to straighten, so reject it.
-        if (x <= border or y <= border or
-                x + box_width >= width - border or
-                y + box_height >= height - border):
+        if (x <= left + border or y <= top + border or
+                x + box_width >= right - border or
+                y + box_height >= bottom - border):
             continue
 
         hull = cv2.convexHull(contour)
@@ -234,9 +247,6 @@ def tray_moved(locked_corners, new_corners, frame_shape, min_shift=0.05, size_to
     Glare bends one side or corner, which changes the tray's shape. A moved
     tray keeps its shape (same side lengths) but shifts by at least
     ``min_shift`` of the image diagonal.
-
-    This is a simple stand-in: Task 4's ``check_outline`` (same / moved /
-    bent) in docs/task_delegation.md can replace it later.
 
     Args:
         locked_corners: The locked outline, 4 x 2 array.

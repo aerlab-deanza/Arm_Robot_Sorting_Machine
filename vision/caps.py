@@ -19,6 +19,13 @@ RED_MIN_SATURATION = 150
 # only a few pixels at 177-179.
 PURPLE_MAX_HUE = 176
 
+# Under a blue color cast the red cap can read hue 165-176 (it read hue 173,
+# saturation 194), which is inside the purple range. The purple cap is less
+# colorful there (hue 166-169, saturation 100-113), so strong color in this
+# hue band counts as red, not purple.
+RED_HIGH_HUE_MIN = 165
+RED_HIGH_HUE_MIN_SATURATION = 170
+
 # The other hue limits. Hue is a color wheel (0-179), so red sits at both ends:
 # red is hue 0 to RED_MAX_HUE, and PURPLE_MAX_HUE + 1 to 179.
 RED_MAX_HUE = 10
@@ -28,7 +35,9 @@ PURPLE_MIN_HUE = 125
 # A cap pixel must be this much brighter than the tray's typical brightness.
 # The camera's color balance drifts: the black tray has looked yellowish and,
 # later, navy blue (as blue as the caps). Only brightness still told them apart.
-TRAY_BRIGHTNESS_MARGIN = 25
+# Glare on a navy tray read brightness 82-91 where the tray's median was 61,
+# so a margin of 25 left the glare right at the limit. 45 keeps it out.
+TRAY_BRIGHTNESS_MARGIN = 45
 
 def min_cap_brightness(straight_tray_hsv, min_brightness):
     """Work out how bright a pixel must be to count as part of a cap.
@@ -73,27 +82,38 @@ def make_color_masks(straight_tray, min_saturation, min_brightness):
     hsv = cv2.cvtColor(straight_tray, cv2.COLOR_BGR2HSV)
     tray_brightness, cap_min_brightness = min_cap_brightness(hsv, min_brightness)
 
+    # Strongly colored pixels in the upper hue band: red under a blue color cast.
+    red_in_purple_band = cv2.inRange(
+        hsv, np.array([RED_HIGH_HUE_MIN, RED_HIGH_HUE_MIN_SATURATION, cap_min_brightness],
+                      dtype=np.uint8),
+        np.array([PURPLE_MAX_HUE, 255, 255], dtype=np.uint8),
+    )
+    purple = cv2.inRange(
+        hsv, np.array([PURPLE_MIN_HUE, min_saturation, cap_min_brightness], dtype=np.uint8),
+        np.array([PURPLE_MAX_HUE, 255, 255], dtype=np.uint8),
+    )
     masks = {
-        # Red sits at both ends of the hue scale, so it needs two ranges.
+        # Red sits at both ends of the hue scale, so it needs two ranges, plus
+        # the strongly colored part of the purple band.
         "red": cv2.bitwise_or(
-            cv2.inRange(
-                hsv, np.array([0, RED_MIN_SATURATION, cap_min_brightness], dtype=np.uint8),
-                np.array([RED_MAX_HUE, 255, 255], dtype=np.uint8),
+            cv2.bitwise_or(
+                cv2.inRange(
+                    hsv, np.array([0, RED_MIN_SATURATION, cap_min_brightness], dtype=np.uint8),
+                    np.array([RED_MAX_HUE, 255, 255], dtype=np.uint8),
+                ),
+                cv2.inRange(
+                    hsv, np.array([PURPLE_MAX_HUE + 1, RED_MIN_SATURATION, cap_min_brightness],
+                                  dtype=np.uint8),
+                    np.array([179, 255, 255], dtype=np.uint8),
+                ),
             ),
-            cv2.inRange(
-                hsv, np.array([PURPLE_MAX_HUE + 1, RED_MIN_SATURATION, cap_min_brightness],
-                              dtype=np.uint8),
-                np.array([179, 255, 255], dtype=np.uint8),
-            ),
+            red_in_purple_band,
         ),
         "blue": cv2.inRange(
             hsv, np.array([BLUE_MIN_HUE, BLUE_MIN_SATURATION, cap_min_brightness], dtype=np.uint8),
             np.array([BLUE_MAX_HUE, 255, 255], dtype=np.uint8),
         ),
-        "purple": cv2.inRange(
-            hsv, np.array([PURPLE_MIN_HUE, min_saturation, cap_min_brightness], dtype=np.uint8),
-            np.array([PURPLE_MAX_HUE, 255, 255], dtype=np.uint8),
-        ),
+        "purple": cv2.bitwise_and(purple, cv2.bitwise_not(red_in_purple_band)),
     }
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -103,7 +123,8 @@ def make_color_masks(straight_tray, min_saturation, min_brightness):
     return masks, tray_brightness, cap_min_brightness
 
 
-def find_objects(straight_tray, masks, min_object_area_ratio, max_aspect_ratio=1.9):
+def find_objects(straight_tray, masks, min_object_area_ratio, max_aspect_ratio=1.9,
+                 edge_margin=0.0):
     """Turn colored regions into objects, and drop duplicates.
 
     Regions that are too small, too thin or too long are skipped. When boxes
@@ -117,6 +138,9 @@ def find_objects(straight_tray, masks, min_object_area_ratio, max_aspect_ratio=1
             image area.
         max_aspect_ratio: Longest allowed long-side to short-side ratio of
             an object's box. Caps are compact; strips are not.
+        edge_margin: Objects whose center is closer than this to the edge of
+            the tray picture (as a fraction, 0-0.5) are ignored. Glare shows
+            up at the edges, and the rack stays away from them. 0 keeps all.
 
     Returns:
         A list of object dicts, biggest first, each with:
@@ -142,6 +166,10 @@ def find_objects(straight_tray, masks, min_object_area_ratio, max_aspect_ratio=1
                 continue
             center_x = moments["m10"] / moments["m00"]
             center_y = moments["m01"] / moments["m00"]
+            if edge_margin and not (
+                    edge_margin <= center_x / width <= 1 - edge_margin and
+                    edge_margin <= center_y / height <= 1 - edge_margin):
+                continue
             x, y, box_w, box_h = cv2.boundingRect(contour)
             # Objects used in this project (caps and a ball) are compact.
             # Long strips of colored background in the camera view are not.

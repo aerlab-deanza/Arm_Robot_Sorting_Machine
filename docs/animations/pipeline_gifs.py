@@ -3,7 +3,7 @@
     python docs/animations/pipeline_gifs.py            # render all
     python docs/animations/pipeline_gifs.py hsv lock   # only these
 
-Names: hsv, steady, lock, cleanup, tracker.
+Names: hsv, threshold, steady, lock, cleanup, tracker.
 Needs Manim CE, LaTeX and FFmpeg. GIFs go to docs/images/pipeline/.
 The numbers on screen match vision/tray_object_pipeline.py. If you change
 a default there, change it here too.
@@ -16,7 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from manim import (
-    DOWN, LEFT, RIGHT, UL, UP, WHITE, AnnularSector, Arc, Circle, Create,
+    DOWN, LEFT, RIGHT, UL, UP, WHITE, AnnularSector, Arc, Arrow, Circle, Create,
     DashedVMobject, Dot, FadeIn, FadeOut, Indicate, LaggedStart, Line, MathTex,
     Polygon, Rectangle, RoundedRectangle, Square, SurroundingRectangle,
     Transform, VGroup, VMobject, Write, PI,
@@ -118,16 +118,19 @@ class HsvScene(FastScene):
             return arc.shift(center)
 
         bands = [(band(0, 10, RED), band(177, 179, RED)), (band(100, 124, DARK_BLUE),), (band(125, 176, PURPLE),)]
+        strong_red = DashedVMobject(band(165, 176, RED).scale(1.06, about_point=center))
         notes = VGroup(
             label("red: 0 to 10 and 177 to 179", 28, RED),
             label("dark blue: 100 to 124", 28, DARK_BLUE),
             label("purple: 125 to 176", 28, PURPLE),
-        ).arrange(DOWN, aligned_edge=LEFT, buff=0.35).move_to([3.4, 1.0, 0])
+            label("strong color (S 170+) at 165 to 176: red too", 24, RED),
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.3).move_to([3.4, 1.55, 0])
         self.say("Red needs **two ranges**. Dark blue and purple sit between",
                  *(Create(a) for a in bands[0]), run_time=1.0, hold=0.2)
         self.play(FadeIn(notes[0]), run_time=0.4)
         self.play(*(Create(a) for a in bands[1]), FadeIn(notes[1]), run_time=0.8)
         self.play(*(Create(a) for a in bands[2]), FadeIn(notes[2]), run_time=0.8)
+        self.play(Create(strong_red), FadeIn(notes[3]), run_time=0.8)
         self.wait(0.8)
 
         # Saturation gauge: hands are pale, the cap is strongly colored.
@@ -449,8 +452,37 @@ class TrackerScene(FastScene):
         self.wait(1.2)
 
 
+# ------------------------------------------------------------ threshold
+
+class ThresholdScene(FastScene):
+    title = "Step 2: the tray threshold"
+
+    def construct(self):
+        rule = MathTex(r"V \le 85", font_size=48, color=YELLOW).to_edge(UP, buff=0.9)
+        values = (30, 65, 84, 120, 190, 240)
+        squares = VGroup(*(Square(0.95, stroke_color=GREY, stroke_width=2).set_fill(
+            "#%02X%02X%02X" % (v, v, v), 1) for v in values)).arrange(RIGHT, buff=0.35).shift(UP * 0.8)
+        nums = VGroup(*(label(str(v), 26, WHITE).next_to(sq, UP, buff=0.15) for v, sq in zip(values, squares)))
+        self.say("Keep the pixels that are **dark**: brightness $V \\le 85$",
+                 FadeIn(rule), FadeIn(squares), FadeIn(nums), run_time=1.0)
+
+        results = VGroup(*(Square(0.95, stroke_color=GREY, stroke_width=2).set_fill(WHITE if v <= 85 else "#000000", 1)
+                           .next_to(sq, DOWN, buff=0.9) for v, sq in zip(values, squares)))
+        arrows = VGroup(*(Arrow(sq.get_bottom(), r.get_top(), buff=0.1, color=GREY, stroke_width=3)
+                          for sq, r in zip(squares, results)))
+        self.say("Pass $\\to$ white. Fail $\\to$ black. This is the **tray threshold**",
+                 LaggedStart(*(Create(a) for a in arrows), lag_ratio=0.1),
+                 LaggedStart(*(FadeIn(r) for r in results), lag_ratio=0.1), run_time=1.4)
+
+        pad = Square(0.95, stroke_color=GREY, stroke_width=2).set_fill("#102A70", 1).move_to([-3.2, -2.4, 0])
+        pad_l = label("the pad: $V = 45$, $S = 160$", 26, WHITE).next_to(pad, RIGHT, buff=0.3)
+        self.say("Saturation is **not** used: next to a bright board the black pad looks dark blue",
+                 FadeOut(arrows), FadeOut(results), FadeIn(pad), FadeIn(pad_l), run_time=1.0, hold=1.8)
+
+
 SCENES = {
     "hsv": (HsvScene, "02a-hsv.gif"),
+    "threshold": (ThresholdScene, "02b-threshold.gif"),
     "steady": (SteadyScene, "04-steady.gif"),
     "lock": (LockScene, "04b-lock.gif"),
     "cleanup": (CleanupScene, "07b-cleanup.gif"),

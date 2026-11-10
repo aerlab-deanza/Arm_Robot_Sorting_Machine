@@ -185,3 +185,50 @@ def test_json_line_for_programs():
     assert cap["color"] == "red" and 0 < cap["u"] < 1 and 0 < cap["v"] < 1
     empty = TrayCapPipeline(parse_args([])).process_frame(np.full((480, 800, 3), 160, np.uint8), 0.0)
     assert json.loads(result_to_json(1, 2, empty)) == {"frame": 1, "time_ms": 2, "tray": "not_found", "caps": []}
+
+
+def test_object_count_is_drawn_on_the_detection_view(monkeypatch):
+    texts = []
+    real_put_text = cv2.putText
+
+    def recording_put_text(img, text, *args, **kwargs):
+        texts.append(text)
+        return real_put_text(img, text, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "putText", recording_put_text)
+    pipeline, result = run(picture([RED, BLUE]), 2.0)
+    assert len(result.objects) == 2
+    texts.clear()
+    pipeline.process_frame(picture([RED, BLUE]), 2.1)
+    assert "objects: 2" in texts
+
+
+def test_label_size_follows_the_box_size(monkeypatch):
+    sizes = {}
+    real_put_text = cv2.putText
+
+    def recording_put_text(img, text, org, font, scale, *args, **kwargs):
+        if text.startswith("red ("):
+            sizes["last"] = scale
+        return real_put_text(img, text, org, font, scale, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "putText", recording_put_text)
+    scales = []
+    for radius in (14, 28, 50):
+        img = np.full((480, 800, 3), 160, np.uint8)
+        cv2.rectangle(img, (100, 80), (700, 380), (30, 30, 30), -1)
+        cv2.circle(img, (400, 230), radius, RED, -1)
+        run(img, 2.0)
+        scales.append(sizes["last"])
+    assert scales[0] < scales[1] < scales[2]
+    assert 0.3 <= scales[0] and scales[2] <= 1.0
+
+
+def test_a_small_tray_picture_is_enlarged_so_the_text_is_crisp():
+    sizes = []
+    for tray_height in (300, 160, 100):                # a big, a medium and a small tray in the picture
+        img = np.full((480, 800, 3), 160, np.uint8)
+        cv2.rectangle(img, (100, 80), (700, 80 + tray_height), (30, 30, 30), -1)
+        _, result = run(img, 2.0)
+        sizes.append(min(result.detection_view.shape[:2]))
+    assert all(side >= 360 for side in sizes)          # never smaller than 360 pixels

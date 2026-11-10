@@ -49,7 +49,7 @@ Arm_Robot_Sorting_Machine/
 1. **Camera.** The AMB82-Mini streams video over the network (RTSP). A USB or laptop camera works too. `camera.py` opens either one and gives the program one picture (frame) at a time.
 2. **Tray.** `tray.py` finds the black tray in the picture, keeps its outline steady, locks it, and straightens it into a top-down view.
 3. **Caps.** `caps.py` finds red, blue and purple caps, and keeps their boxes steady.
-4. **Output.** `tray_object_pipeline.py` shows six windows and prints each cap's color and position as a fraction of the tray (`u` across, `v` down, 0 to 1). It does not give robot millimeters yet. See [Pipeline limits](docs/limitation.md).
+4. **Output.** `tray_object_pipeline.py` shows six windows and prints one JSON line per second with each cap's color and position as a fraction of the tray (`u` across, `v` down, 0 to 1). The "Rectified tray / detected objects" window also shows how many caps were found. It does not give robot millimeters yet. See [Pipeline limits](docs/limitation.md).
 
 ```text
 camera  ->  camera.py  ->  tray.py  ->  caps.py  ->  tray_object_pipeline.py
@@ -90,6 +90,16 @@ python vision/tray_object_pipeline.py --camera-index 0
 Laptop Camera:
 ```powershell
 python vision/tray_object_pipeline.py --camera-index 1
+```
+
+If a dark floor or chair makes "TRAY NOT FOUND", search only inside a rectangle around the tray (left, top, right, bottom, as fractions of the picture; it is drawn in orange):
+```powershell
+python vision/tray_object_pipeline.py --camera-index 0 --tray-region 0.05,0.28,0.95,0.97
+```
+
+If the picture changes color when something white moves in view (the black tray turns blue), freeze the camera's automatic white balance and exposure. USB camera only, and some cameras ignore it:
+```powershell
+python vision/tray_object_pipeline.py --camera-index 0 --lock-camera
 ```
 
 No windows (for the robot PC). It prints one JSON line per frame with the tray state and the caps' positions. Stop with Ctrl+C:
