@@ -147,13 +147,13 @@ def test_cap_hidden_for_a_few_frames_comes_back():
 def test_locked_tray_is_searched_less_often(monkeypatch):
     import vision.tray_object_pipeline as module
     calls = {"n": 0}
-    real = module.find_tray_corners
+    real = module.find_tray_corners_any_light
 
     def counting(*args, **kwargs):
         calls["n"] += 1
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(module, "find_tray_corners", counting)
+    monkeypatch.setattr(module, "find_tray_corners_any_light", counting)
     pipeline = TrayCapPipeline(parse_args([]))
     img = picture()
     now, _ = feed(pipeline, img, 0.0, 3.0)
@@ -220,8 +220,19 @@ def test_label_size_follows_the_box_size(monkeypatch):
         cv2.circle(img, (400, 230), radius, RED, -1)
         run(img, 2.0)
         scales.append(sizes["last"])
-    assert scales[0] < scales[1] < scales[2]
-    assert 0.3 <= scales[0] and scales[2] <= 1.0
+    assert scales[0] <= scales[1] <= scales[2] and scales[0] < scales[2]
+    assert scales[0] >= 0.5 and scales[2] <= 0.8 * 1.0001     # readable, but never huge
+
+
+def test_a_label_moves_below_its_box_when_the_space_above_is_taken():
+    from vision.tray_object_pipeline import place_label
+    box = (100, 100, 40, 40)
+    text = (120, 14, 4)                                       # width, height, baseline
+    free_x, free_y = place_label(box, text, [], (360, 600, 3))
+    assert free_y < 100                                       # above the box when nothing is in the way
+    taken = [(free_x, free_y - 14, 120, 18)]                  # another label sits there
+    moved_x, moved_y = place_label(box, text, taken, (360, 600, 3))
+    assert moved_y > 100 + 40                                 # now below the box
 
 
 def test_a_small_tray_picture_is_enlarged_so_the_text_is_crisp():

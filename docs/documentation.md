@@ -323,7 +323,8 @@ For how the program works step by step, see [current pipeline](computer_vision_p
 
 <details><summary>Details</summary>
 
-- A label is about 1.6 times as wide as its box, font size between 0.3 and 1.0. The box line and the center dot follow the box too.
+- A label is about 1.6 times as wide as its box, but its font size stays between 0.5 and 0.8 (`LABEL_MIN_SCALE`, `LABEL_MAX_SCALE`), so it is always readable and never huge. The box line and the center dot follow the box too.
+- If a label would cover another label, it moves below its box, or inside its top edge.
 - The picture is enlarged to at least 360 pixels on its shorter side (`MIN_VIEW_SIDE`). Finding the caps still uses the original size.
 
 </details>

@@ -3,6 +3,18 @@
 import cv2
 import numpy as np
 
+# Strong light makes the black pad look grey, so part of it is brighter than the usual
+# limit (85) and the dark shape breaks apart or loses a lit corner. Then the limit is
+# raised in steps of TRAY_LIMIT_STEP until the outline is clean: dark pixels fill at least
+# TRAY_MIN_COVER of it, and on every side at most TRAY_MAX_GREY_EDGE of the strip just
+# outside it is grey (brighter than the limit but not brighter than the highest limit).
+# A real tray edge has bright foam or floor outside; an edge cut by glare has the grey,
+# lit part of the pad.
+TRAY_LIMIT_STEP = 15
+TRAY_MIN_COVER = 0.80
+TRAY_MAX_GREY_EDGE = 0.30
+TRAY_EDGE_WIDTH = 4  # pixels
+
 
 def order_corners(points):
     """Put four corner points in a fixed order.
@@ -123,6 +135,126 @@ def find_tray_corners(frame, min_hue, max_hue, min_saturation, min_brightness,
     if not candidates:
         return None, dark_pixel_mask
     return max(candidates, key=lambda candidate: candidate[0])[1], dark_pixel_mask
+
+
+def outline_cover(corners, dark_pixel_mask):
+    """How much of a tray outline is filled with dark pixels.
+
+    A real tray is dark almost everywhere inside its outline (only the caps
+    are not). A tray found only in part, or joined with a dark floor, fills
+    its outline much less.
+
+    Args:
+        corners: 4 x 2 array of the outline corners.
+        dark_pixel_mask: Black-and-white tray threshold from find_tray_corners().
+
+    Returns:
+        The filled fraction, 0 to 1.
+    """
+    inside = np.zeros(dark_pixel_mask.shape, np.uint8)
+    cv2.fillPoly(inside, [np.round(corners).astype(np.int32)], 255)
+    count = int(np.count_nonzero(inside))
+    if count == 0:
+        return 0.0
+    return float(np.count_nonzero(dark_pixel_mask[inside > 0])) / count
+
+
+def grey_edge(corners, frame, limit, highest_limit):
+    """How grey the strip just outside a tray outline is, on its worst side.
+
+    Grey means brighter than ``limit`` (so not counted as tray) but not
+    brighter than ``highest_limit``. Around a real tray the strip is bright
+    foam or floor, so this is small on every side. Where glare cut the
+    outline short, that side's strip is the lit, grey part of the pad.
+
+    Args:
+        corners: 4 x 2 array of the outline corners.
+        frame: Camera image, BGR.
+        limit: Brightness limit the outline was found with.
+        highest_limit: Highest brightness limit that may be tried.
+
+    Returns:
+        The grey fraction of the strip on the greyest side, 0 to 1.
+    """
+    corners = np.asarray(corners, np.float32).reshape(4, 2)
+    brightness = frame.max(axis=2)  # HSV value
+    inside = np.zeros(brightness.shape, np.uint8)
+    cv2.fillPoly(inside, [np.round(corners).astype(np.int32)], 255)
+    size = 2 * TRAY_EDGE_WIDTH + 1
+    strip = cv2.dilate(inside, np.ones((size, size), np.uint8)) & ~inside
+    ys, xs = np.nonzero(strip)
+    if xs.size == 0:
+        return 0.0
+    points = np.stack([xs, ys], axis=1).astype(np.float32)
+    distances = []
+    for i in range(4):  # distance from each strip pixel to each side
+        start, end = corners[i], corners[(i + 1) % 4]
+        side = end - start
+        t = np.clip(((points - start) @ side) / max(float(side @ side), 1e-6), 0, 1)
+        distances.append(np.linalg.norm(points - (start + t[:, None] * side), axis=1))
+    nearest_side = np.argmin(np.stack(distances, axis=1), axis=1)
+    values = brightness[ys, xs]
+    grey = (values > limit) & (values <= highest_limit)
+    worst = 0.0
+    for i in range(4):
+        on_side = nearest_side == i
+        if np.any(on_side):
+            worst = max(worst, float(np.count_nonzero(grey & on_side)) / np.count_nonzero(on_side))
+    return worst
+
+
+def find_tray_corners_any_light(frame, max_saturation, max_brightness, highest_max_brightness,
+                                min_area_ratio, gap_fill_size, region=None):
+    """Find the tray, raising the brightness limit when strong light makes it look grey.
+
+    Tries ``max_brightness`` first. If no tray is found, or its outline is
+    not clean (dark pixels fill less than TRAY_MIN_COVER of it, or more than
+    TRAY_MAX_GREY_EDGE of the strip outside one of its sides is grey), tries again with the
+    limit TRAY_LIMIT_STEP higher, up to ``highest_max_brightness``. Uses the
+    first clean outline. If none is clean: the first well-filled one, else
+    the first one found. In normal light an early try is clean.
+
+    Args:
+        frame: Camera image, BGR.
+        max_saturation: Highest saturation counted as tray (0-255).
+        max_brightness: Usual highest brightness counted as tray (0-255).
+        highest_max_brightness: Highest the limit may be raised to. Equal to
+            ``max_brightness`` (or lower) turns raising off.
+        min_area_ratio: Smallest tray size, as a fraction of the frame area.
+        gap_fill_size: Size in pixels used to fill small gaps in the mask.
+        region: Optional search region, as in find_tray_corners().
+
+    Returns:
+        A tuple ``(corners, dark_pixel_mask, limit)``: the corners (or None),
+        the tray threshold used, and the brightness limit used.
+    """
+    limits = [max_brightness]
+    while limits[-1] + TRAY_LIMIT_STEP <= highest_max_brightness:
+        limits.append(limits[-1] + TRAY_LIMIT_STEP)
+    first_found = None
+    first_filled = None
+    usual_mask = None
+    for limit in limits:
+        corners, dark_pixel_mask = find_tray_corners(
+            frame, 0, 179, 0, 0, max_saturation, limit, min_area_ratio, gap_fill_size, region=region)
+        if usual_mask is None:
+            usual_mask = dark_pixel_mask
+        if corners is None:
+            continue
+        result = (corners, dark_pixel_mask, limit)
+        if first_found is None:
+            first_found = result
+        if outline_cover(corners, dark_pixel_mask) < TRAY_MIN_COVER:
+            continue
+        if first_filled is None:
+            first_filled = result
+        if grey_edge(corners, frame, limit, highest_max_brightness) <= TRAY_MAX_GREY_EDGE:
+            return result
+    if first_filled is not None:
+        return first_filled
+    if first_found is not None:
+        return first_found
+    return None, usual_mask, max_brightness
 
 
 class TrayOutlineSmoother:

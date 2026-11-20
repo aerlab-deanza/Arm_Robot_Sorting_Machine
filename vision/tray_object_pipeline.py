@@ -28,7 +28,7 @@ import time
 try:
     from .camera import lock_camera_settings, open_capture
     from .tray import (  # noqa: F401  (re-exported so old imports keep working)
-        TrayLock, TrayOutlineSmoother, find_tray_corners, order_corners,
+        TrayLock, TrayOutlineSmoother, find_tray_corners, find_tray_corners_any_light, order_corners,
         straighten_tray, tray_moved,
     )
     from .caps import (  # noqa: F401  (re-exported so old imports keep working)
@@ -37,7 +37,7 @@ try:
 except ImportError:
     from camera import lock_camera_settings, open_capture
     from tray import (  # noqa: F401
-        TrayLock, TrayOutlineSmoother, find_tray_corners, order_corners,
+        TrayLock, TrayOutlineSmoother, find_tray_corners, find_tray_corners_any_light, order_corners,
         straighten_tray, tray_moved,
     )
     from caps import (  # noqa: F401
@@ -163,6 +163,7 @@ class TrayCapPipeline:
         self.settle_until = None
         self.last_tray_check = None
         self.last_dark_pixel_mask = None
+        self.last_dark_limit = args.tray_max_value
 
     def reset_tray(self):
         """Forget the locked outline and search for the tray again."""
@@ -189,12 +190,13 @@ class TrayCapPipeline:
             now - self.last_tray_check >= args.locked_check_seconds
         )
         if search_tray:
-            detected_corners, dark_pixel_mask = find_tray_corners(
+            # Any hue (black has no stable hue), no lower limit on saturation or
+            # brightness. Under strong light the brightness limit is raised.
+            detected_corners, dark_pixel_mask, self.last_dark_limit = find_tray_corners_any_light(
                 frame,
-                0, 179,  # any hue: black has no stable hue
-                0, 0,    # no lower limit on saturation or brightness
                 args.tray_max_saturation,
                 args.tray_max_value,
+                args.tray_max_value_highest,
                 args.tray_min_area_ratio,
                 args.close_kernel,
                 region=args.tray_region,
@@ -305,6 +307,10 @@ class TrayCapPipeline:
             (8, view_height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
             (255, 255, 255), 1,
         )
+        # Font sizes are kept between a readable minimum and a maximum that
+        # can't cover the other caps. Bigger pictures get bigger limits.
+        size_factor = min(detection_view.shape[:2]) / MIN_VIEW_SIDE
+        placed_labels = []
         for obj in objects:
             x, y, box_w, box_h = (int(round(value * zoom)) for value in obj["box"])
             # Everything drawn on a cap grows and shrinks with its box.
@@ -314,13 +320,15 @@ class TrayCapPipeline:
                        max(2, min(box_w, box_h) // 10), (255, 0, 0), -1)
             # The label follows the cap, so it shows the live position (u, v).
             text = "{} ({:.2f}, {:.2f})".format(obj["color"], obj["u"], obj["v"])
-            font_scale = label_scale(text, box_w)
-            label_thickness = 1 if font_scale < 0.55 else 2
-            (text_width, text_height), _ = cv2.getTextSize(
+            font_scale = label_scale(text, box_w, size_factor)
+            label_thickness = 1 if font_scale < 0.65 * size_factor else 2
+            (text_width, text_height), baseline = cv2.getTextSize(
                 text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, label_thickness)
-            text_x = max(0, min(x, detection_view.shape[1] - text_width - 4))
+            text_x, text_y = place_label((x, y, box_w, box_h), (text_width, text_height, baseline),
+                                         placed_labels, detection_view.shape)
+            placed_labels.append((text_x, text_y - text_height, text_width, text_height + baseline))
             cv2.putText(
-                detection_view, text, (text_x, max(text_height + 4, y - 6)),
+                detection_view, text, (text_x, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), label_thickness,
             )
         color_mask = np.zeros(straight_tray.shape[:2], dtype=np.uint8)
@@ -336,18 +344,60 @@ class TrayCapPipeline:
 MIN_VIEW_SIDE = 360
 
 
-def label_scale(text, box_width):
+# Smallest and biggest font size for a cap's label, on a picture whose shorter
+# side is MIN_VIEW_SIDE. Smaller is hard to read; bigger covers other caps.
+LABEL_MIN_SCALE = 0.5
+LABEL_MAX_SCALE = 0.8
+
+
+def label_scale(text, box_width, size_factor=1.0):
     """Pick a font size so a label is about 1.6 times as wide as its box.
 
     Args:
         text: The label text.
         box_width: Width of the cap's box, in pixels.
+        size_factor: How much bigger the picture is than ``MIN_VIEW_SIDE``
+            on its shorter side. The limits grow with it.
 
     Returns:
-        The OpenCV font scale, between 0.3 (small caps) and 1.0 (big caps).
+        The OpenCV font scale, between ``LABEL_MIN_SCALE`` and
+        ``LABEL_MAX_SCALE`` (times ``size_factor``).
     """
     (width_at_one, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
-    return float(np.clip(1.6 * box_width / width_at_one, 0.3, 1.0))
+    return float(np.clip(1.6 * box_width / width_at_one,
+                         LABEL_MIN_SCALE * size_factor, LABEL_MAX_SCALE * size_factor))
+
+
+def place_label(box, text_size, taken, picture_shape):
+    """Find a spot for a label where it doesn't cover another label.
+
+    Tries above the box first, then below it, then inside its top edge. If
+    every spot is taken, the label goes above the box anyway.
+
+    Args:
+        box: The cap's box ``(x, y, width, height)`` in pixels.
+        text_size: ``(width, height, baseline)`` from cv2.getTextSize().
+        taken: Rectangles ``(x, y, width, height)`` of labels already drawn.
+        picture_shape: Shape of the picture the label is drawn on.
+
+    Returns:
+        ``(x, y)`` for cv2.putText (y is the text's baseline).
+    """
+    x, y, box_w, box_h = box
+    text_w, text_h, baseline = text_size
+    height, width = picture_shape[:2]
+    left = max(0, min(x, width - text_w - 4))
+    tries = (y - 6, y + box_h + text_h + 6, y + text_h + 4)
+    spots = []
+    for text_y in tries:
+        text_y = max(text_h + 2, min(text_y, height - baseline - 2))
+        spots.append((left, text_y))
+        top = text_y - text_h
+        clear = all(left + text_w <= ox or ox + ow <= left or top + text_h + baseline <= oy or oy + oh <= top
+                    for ox, oy, ow, oh in taken)
+        if clear:
+            return left, text_y
+    return spots[0]
 
 
 def show_results(frame, result):
@@ -468,6 +518,11 @@ def parse_args(argv=None):
                              "0.05,0.3,0.95,0.95). Ignores the floor, chairs and people")
     parser.add_argument("--tray-max-value", type=int, default=85,
                         help="Brightest brightness counted as tray (0-255)")
+    parser.add_argument("--tray-max-value-highest", type=int, default=145,
+                        help="Under strong light the black tray looks grey. Then the "
+                             "brightness limit is raised step by step, up to this, until "
+                             "the tray is found cleanly. Set it to --tray-max-value to "
+                             "turn this off")
     parser.add_argument("--tray-min-area-ratio", type=float, default=0.04,
                         help="Smallest tray, as a fraction of the frame area")
     parser.add_argument("--tray-settle-seconds", type=float, default=0.5,

@@ -3,3 +3,12 @@ phong_local_notes
 __pycache__/
 docs/animations/media
 AGENTS.md
+firmware/tray_cap_core/pc_test/pc_test
+firmware/tray_cap_core/pc_test/pc_test.exe
+firmware/tray_cap_core/pc_test/tc_core.dll
+firmware/tray_cap_core/pc_test/*.o
+
+docs/animations/arm_vision_video/media/
+docs/animations/arm_vision_video/*.mp4
+
+.venv/

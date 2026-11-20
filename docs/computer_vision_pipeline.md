@@ -52,7 +52,14 @@ The pass/fail test on each pixel:
 
 White = selected dark pixels. Black = ignored pixels. Objects leave holes in the tray threshold. Other dark surfaces may also pass; step 3 checks their shape.
 
-Default limit: brightness 0-85. Saturation is not limited. If a dark floor or chair joins the tray and you see "TRAY NOT FOUND", give the program a search region, for example `--tray-region 0.05,0.28,0.95,0.97` (left, top, right, bottom, as fractions of the picture). It is drawn as an orange rectangle in the camera window. Everything outside it is ignored. Keep a few pixels of room between the region and the tray.
+Default limit: brightness 0-85. Saturation is not limited.
+
+**Strong light.** A lamp can make part of the black pad look grey (brightness 120-150), so the pad breaks apart or loses a lit corner. Then the program raises the limit in steps of 15 (100, 115, 130, 145) and uses the first outline that is clean:
+
+- dark pixels fill at least 80% of the outline, and
+- on every side, at most 30% of the thin strip just outside the outline is grey. A real tray edge has bright foam or floor outside it. An edge cut short by glare has the grey, lit part of the pad.
+
+In normal light the first try is clean, so nothing changes. `--tray-max-value-highest` sets the highest limit (default 145). Set it to 85 to turn this off. If a dark floor or chair joins the tray and you see "TRAY NOT FOUND", give the program a search region, for example `--tray-region 0.05,0.28,0.95,0.97` (left, top, right, bottom, as fractions of the picture). It is drawn as an orange rectangle in the camera window. Everything outside it is ignored. Keep a few pixels of room between the region and the tray.
 
 ## 3. Turn tray pixels into an outline
 
@@ -184,7 +191,7 @@ Steady boxes: the tracker shows a cap only after it is seen in 3 of the last 5 f
 
 ![Each frame is detected from scratch; the tracker keeps the box steady and ignores a one-frame speck](images/pipeline/07d-steady-boxes.gif)
 
-The green boxes mark objects (after tracking). Each label shows the cap's color and its position `(u, v)`, and it follows the cap when the cap moves. The label, the box line and the center dot grow and shrink with the size of the box. This picture is enlarged to at least 360 pixels on its smaller side before the text is drawn (`MIN_VIEW_SIDE`), so the text stays crisp when the tray is small. Detection still runs on the original size. Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
+The green boxes mark objects (after tracking). Each label shows the cap's color and its position `(u, v)`, and it follows the cap when the cap moves. The label, the box line and the center dot grow and shrink with the size of the box, within a minimum and a maximum font size. A label that would cover another label moves below its box. This picture is enlarged to at least 360 pixels on its smaller side before the text is drawn (`MIN_VIEW_SIDE`), so the text stays crisp when the tray is small. Detection still runs on the original size. Blue dots mark their color-region centers. The colored-object mask window shows the raw mask of each frame, before tracking, so it can still flicker.
 
 The combined color mask selects the objects as white. The tray stays black.
 

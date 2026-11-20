@@ -2,28 +2,107 @@
 
 ## Authors
 
-|  |  |
+| Someone | Somethign |
 |:---|:---|
-|  |  |
-|  |  |
-|  |  |
+| did something here  | did somethnig hre |
+| empty | epmty |
+
+---
+
+## Set up the project
+
+Do this once on each computer. It needs internet and about 2 minutes. The script installs the Python packages into a private `.venv` folder, runs the tests, and looks for cameras. It changes nothing outside the project folder. You need Python 3.10 or newer (3.13 is best); if it is missing, the script says how to install it.
+
+Get the code first. This needs Git. New to Git? Follow GitHub's step-by-step guide to [install Git](https://github.com/git-guides/install-git) (Windows, Mac and Linux), then [set up Git](https://docs.github.com/en/get-started/git-basics/set-up-git) with your name and email. Check it works with `git --version`.
+
+```text
+git clone https://github.com/aerlab-deanza/Arm_Robot_Sorting_Machine.git
+cd Arm_Robot_Sorting_Machine
+```
+
+### Windows
+
+![Set up on Windows, step by step](docs/images/setup/setup-windows.gif)
+
+1. Open **PowerShell** in the project folder.
+2. Run the setup script:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\setup.ps1
+   ```
+
+3. Wait for `Setup done.`
+4. In every new PowerShell window, turn the environment on before you run the code:
+
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+No Python? Run `winget install Python.Python.3.13`, open a new PowerShell, and run the script again.
+
+### Mac
+
+![Set up on Mac, step by step](docs/images/setup/setup-mac.gif)
+
+1. Open **Terminal** in the project folder.
+2. Run the setup script:
+
+   ```bash
+   bash setup.sh
+   ```
+
+3. Wait for `Setup done.`
+4. In every new Terminal window, turn the environment on before you run the code:
+
+   ```bash
+   source .venv/bin/activate
+   ```
+
+No Python? Run `brew install python@3.13` (needs [Homebrew](https://brew.sh)), open a new Terminal, and run the script again. The first time you run the camera, macOS asks to let Terminal use it. Click **Allow**.
+
+### Check it works
+
+With the environment on, this should print `passed`:
+
+```text
+python -m pytest tests -q
+```
+
+Use `-SkipTests` (Windows) or `--skip-tests` (Mac) after the script name to skip the tests during setup. Run the script again any time: it is safe, and it fixes a broken `.venv`. To start over, delete the `.venv` folder and run it again.
 
 ---
 
 ## Computer Vision
 ### Documents
 
-The docs have animations and plain-language explanations. Click a link below to open one.
+A short tour of the folders and files. Then the guides: click a path to open the file on GitHub.
 
-![Tour of the docs: each guide has animations and short explanations](docs/images/docs-tour.gif)
+![Tour of the workspace: what each folder and file is for](docs/images/workspace-tour.gif)
 
-The whole pipeline in about 50 seconds:
+Check `computer_vision_pipeline.md` to see how the pipeline finds the tray and the caps, step by step, with animations.
+
+[docs/computer_vision_pipeline.md](docs/computer_vision_pipeline.md)
+
+Check `documentation.md` to catch up with our findings and the progress of the project.
+
+[docs/documentation.md](docs/documentation.md)
+
+Check `task_delegation.md` to see what is left to do: the 3 open tasks, with steps and how to check you are done.
+
+[docs/task_delegation.md](docs/task_delegation.md)
+
+Check `arm_vision.md` to see how we model the arm's shape from a camera: research, method and results, with animations.
+
+[docs/arm_vision.md](docs/arm_vision.md)
+
+## Overview of 2 Primary Tasks we will work on
+
+**Task 1: Tray Localization + Object Detection + Color Detection** (the whole pipeline in about 50 seconds). Each step has its own animation in the pipeline guide.
 
 ![The vision pipeline, from camera picture to cap color and position](docs/images/pipeline/09a-recap.gif)
 
-- [Current pipeline](docs/computer_vision_pipeline.md) - Steps, algorithms, and current output.
-- [Findings and setup decisions](docs/documentation.md) - Image comparisons showing why we chose this setup.
-- [What is left to do](docs/task_delegation.md) - The 3 open tasks: goal, steps, how to check you're done, and code help.
+**Task 2: Curvature & Coordinates Detection:** [CLICK HERE](docs/animations/arm_vision_explained.mp4) (the video is 12 minute). The same video is split into short animations, one per part, in the [docs/arm_vision.md](docs/arm_vision.md).
+
 
 ### Folder map
 
@@ -34,10 +113,18 @@ Arm_Robot_Sorting_Machine/
 |   +-- <a href="vision/camera.py">camera.py</a>                  Opens the USB camera or the network stream
 |   +-- <a href="vision/tray.py">tray.py</a>                    Finds, steadies, locks and straightens the tray
 |   +-- <a href="vision/caps.py">caps.py</a>                    Finds caps by color and steadies their boxes
+|   +-- <a href="vision/arm_vision.py">arm_vision.py</a>              Finds the arm's backbone curve from a camera picture
+|   +-- <a href="vision/shape_models.py">shape_models.py</a>           Curve models of the tendon arm
 +-- <a href="firmware/TrayObjectDetection/">firmware/TrayObjectDetection/</a>  Sketch for the AMB82-Mini camera board (Arduino)
++-- <a href="firmware/AMB82Pipeline/">firmware/AMB82Pipeline/</a>            The whole pipeline in C++ on the AMB82-Mini (Arduino IDE)
++-- <a href="firmware/tray_cap_core/">firmware/tray_cap_core/</a>            The shared C++ pipeline code (edit here, then run firmware/sync_core.py)
++-- <a href="firmware/ESP32CamPipeline/">firmware/ESP32CamPipeline/</a>      Same pipeline on an ESP32-CAM (not used: we have no ESP32-CAM)
 +-- <a href="docs/">docs/</a>                          Guides, findings and the open tasks
 |   +-- <a href="docs/images/">images/</a>                    Screenshots and GIFs used by the guides
 |   +-- <a href="docs/animations/">animations/</a>                Scripts that make the GIFs (Manim)
++-- <a href="tests/">tests/</a>                         Automatic checks: python -m pytest tests
++-- <a href="setup.ps1">setup.ps1</a>                      One-step setup for Windows (see Set up the project)
++-- <a href="setup.sh">setup.sh</a>                       One-step setup for Mac
 +-- <a href="requirements.txt">requirements.txt</a>               Python packages for the vision code
 +-- <a href="AGENTS.md">AGENTS.md</a>                      Instructions for AI coding agents
 +-- <a href="README.md">README.md</a>                      This file
@@ -61,48 +148,73 @@ camera  ->  camera.py  ->  tray.py  ->  caps.py  ->  tray_object_pipeline.py
 - [tray.py](vision/tray.py) - Finds, steadies, locks and straightens the tray.
 - [caps.py](vision/caps.py) - Finds caps by color and steadies their boxes.
 - [requirements.txt](requirements.txt) - Python packages used by the vision script.
+- [setup.ps1](setup.ps1) and [setup.sh](setup.sh) - Set up the environment in one step (Windows and Mac).
 
 ### Commands
 
-Run commands in PowerShell from the project folder. Replace `192.168.0.25` if the camera IP changes.
+Run from the project folder with the environment on. Windows and Mac use the same commands.
 
-Install the Python packages needed by the vision script:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-Run tray and object detection with camera
-
-The pipeline looks for a black tray. It waits 0.5 seconds after first finding it, so keep your hand out of the tray during this time.
-
-- **Tray lock:** once the outline stays still for 0.75 seconds, it locks (cyan, `TRAY LOCKED`). A hand or glare can't move it. Press `r` in a window to find the tray again. The tray unlocks by itself if the tray really moves.
-- **Steady caps:** a cap shows only after it is seen in 3 of the last 5 frames. A new or removed cap appears or disappears about 3 frames late.
-
-USB Camera:
-
-``*NOTES: If you don't have USB Camera plugged in, this command could be used for your laptop camera.``
+**Cap detection: USB camera**
 ```powershell
 python vision/tray_object_pipeline.py --camera-index 0
 ```
 
-Laptop Camera:
+**Cap detection: laptop camera**
 ```powershell
 python vision/tray_object_pipeline.py --camera-index 1
 ```
 
-If a dark floor or chair makes "TRAY NOT FOUND", search only inside a rectangle around the tray (left, top, right, bottom, as fractions of the picture; it is drawn in orange):
+**Cap detection: AMB82-Mini network stream** (change the IP if the camera's changes)
+```powershell
+python vision/tray_object_pipeline.py --url rtsp://192.168.0.25:554
+```
+
+**Search for the tray only inside a rectangle** (left, top, right, bottom, as fractions of the picture)
 ```powershell
 python vision/tray_object_pipeline.py --camera-index 0 --tray-region 0.05,0.28,0.95,0.97
 ```
 
-If the picture changes color when something white moves in view (the black tray turns blue), freeze the camera's automatic white balance and exposure. USB camera only, and some cameras ignore it:
+**Freeze the USB camera's auto white balance and exposure**
 ```powershell
 python vision/tray_object_pipeline.py --camera-index 0 --lock-camera
 ```
 
-No windows (for the robot PC). It prints one JSON line per frame with the tray state and the caps' positions. Stop with Ctrl+C:
+**No windows: one JSON line per frame** (stop with Ctrl+C)
 ```powershell
 python vision/tray_object_pipeline.py --camera-index 0 --no-gui
 ```
 
+**Arm shape: one picture**
+```powershell
+python vision/arm_vision.py --image path/to/arm.png
+```
+
+**Arm shape: recorded video**
+```powershell
+python vision/arm_vision.py --video arm.mp4
+```
+
+**Arm shape: live camera**
+```powershell
+python vision/arm_vision.py --camera-index 0
+```
+
+**Arm shape: set the arm base (pixels)**
+```powershell
+python vision/arm_vision.py --camera-index 0 --base 300 420
+```
+
+**Arm shape: use only part of the picture (x y width height)**
+```powershell
+python vision/arm_vision.py --video arm.mp4 --crop 0 0 640 480
+```
+
+**Arm shape: also save the raw camera video**
+```powershell
+python vision/arm_vision.py --camera-index 0 --record arm_raw.avi
+```
+
+**Arm shape: no window, JSON only**
+```powershell
+python vision/arm_vision.py --image path/to/arm.png --no-gui
+```
